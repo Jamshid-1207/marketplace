@@ -1,6 +1,6 @@
 # System Design 01: Каркас (этап 1)
 
-**Статус:** ✅ Утверждено · **Дата:** 2026-10-22 · **Ревизия:** 5
+**Статус:** ✅ Утверждено · **Дата:** 2026-10-22 · **Ревизия:** 6
 
 Этап 1 из ТЗ (раздел 8): монорепо, локальная инфраструктура, общие libs, шаблон сервиса, CI. Бизнес-логики на этом этапе нет: строим то, на чём будут стоять все 8 сервисов. Правила взяты из ADR-0001…0004, здесь только конкретика реализации.
 
@@ -30,11 +30,12 @@
 
 | Что                 | Версия                                                                                            |
 | ------------------- | ------------------------------------------------------------------------------------------------- |
-| Node.js             | 24 LTS (на машине уже 24.11), фиксируется в `.nvmrc` и `engines`; CI читает `.nvmrc`              |
+| Node.js             | 24 LTS, не ниже 24.11.1 (`engines`): с неё работают синхронные ESM-хуки для OpenTelemetry (п. 6.2). `.nvmrc`, CI читает его |
 | pnpm                | 12.x, `packageManager` в `package.json`. Ставится через `npm i -g pnpm@<версия>`: corepack 0.34 из Node 24 не запускает нативный бинарник pnpm 12, а с Node 25 corepack не входит в поставку |
 | Docker              | Docker Desktop + WSL2. Лимит WSL — 8 ГБ RAM в `%UserProfile%\.wslconfig` (из 16 ГБ машины)        |
 | Nx, NestJS, Prisma  | Nx 23.3 (24.0.0 вышел за день до init — ждём патчей), NestJS 12 (текущий стабильный), Prisma 7.10 (8.x пока rc); точные версии — в lockfile |
 | TypeScript          | 6.0: TypeScript 7 не поддерживается typescript-eslint (`<6.1`). Strict, `module: nodenext`, сервисы и libs — CommonJS |
+| Модули              | NestJS 12 распространяется только в ESM. Наш код остаётся CommonJS: Node 24 загружает ESM-пакеты через `require(esm)`. Jest делает то же только с флагом `--experimental-vm-modules`; он задан для всех `test` в `nx.json` |
 | Postgres / Kafka    | `postgres:16-alpine`, `apache/kafka:4.x` (тег фиксируется), `ghcr.io/kafbat/kafka-ui`, Jaeger v2  |
 
 Расхождение «PostgreSQL 15+» (ADR-0004) и «16» (ТЗ) закрываем: **16**.
@@ -125,7 +126,9 @@ export interface SqlTx {
 
 ### 6.2 `libs/observability`
 
-- `initTelemetry(serviceName)`: OpenTelemetry Node SDK, экспорт OTLP HTTP в Jaeger, автоинструментация HTTP, pg и Nest. SDK должен загрузиться раньше модулей, которые он инструментирует. В `main.ts` это не сработает: импорты выполняются до первой строки тела файла. Поэтому вызов лежит в отдельном `src/instrumentation.ts`, а сервис запускается как `node --require ./dist/instrumentation.js dist/main.js`.
+- `initTelemetry(serviceName)`: OpenTelemetry Node SDK, экспорт OTLP HTTP в Jaeger, автоинструментация HTTP, Express, pg и Nest.
+  - Nest и всё, что он импортирует (express), загружаются как ESM, а инструментации OTel перехватывают только `require`. Поэтому `initTelemetry` сначала ставит синхронные ESM-хуки `import-in-the-middle` (`module.registerHooks`, Node ≥ 24.11.1) на инструментируемые пакеты.
+  - Инструментация `nestjs-core` 0.71 поддерживает Nest < 12: спанов контроллеров пока нет. Трейс запроса строится по спанам HTTP и Express. SDK должен загрузиться раньше модулей, которые он инструментирует. В `main.ts` это не сработает: импорты выполняются до первой строки тела файла. Поэтому вызов лежит в отдельном `src/instrumentation.ts`, а сервис запускается как `node --require ./dist/instrumentation.js dist/main.js`.
 - Контекст запроса на `AsyncLocalStorage`: `{ correlationId, causationId }`. Для HTTP его заполняет middleware (`X-Request-Id`), для Kafka — consumer runner из конверта.
 - Логгер: pino (через `nestjs-pino`), JSON. В каждой записи `service`, `traceId`, `spanId`, `correlationId`. Локально — `pino-pretty`.
 - Health: `/health/live` (процесс жив) и `/health/ready` (БД `SELECT 1`, Kafka — подключён ли producer) через `@nestjs/terminus`.

@@ -16,7 +16,9 @@
     {
       "plugin": "@nx/js/typescript",
       "options": {
-        "typecheck": { "targetName": "typecheck" },
+        "typecheck": {
+          "targetName": "typecheck"
+        },
         "build": {
           "targetName": "build",
           "configName": "tsconfig.lib.json",
@@ -27,13 +29,26 @@
     },
     {
       "plugin": "@nx/eslint/plugin",
-      "options": { "targetName": "lint" }
+      "options": {
+        "targetName": "lint"
+      }
     },
     {
       "plugin": "@nx/jest/plugin",
       "include": ["**/jest.config.cjs"],
-      "options": { "targetName": "test" }
+      "options": {
+        "targetName": "test"
+      }
     }
   ],
-  "analytics": false
+  "analytics": false,
+  "targetDefaults": {
+    "test": {
+      "options": {
+        "env": {
+          "NODE_OPTIONS": "--experimental-vm-modules --disable-warning=ExperimentalWarning"
+        }
+      }
+    }
+  }
 }

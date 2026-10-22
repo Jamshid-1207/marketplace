@@ -9,3 +9,4 @@ allowBuilds:
   '@swc/core': false
   '@parcel/watcher': false
   unrs-resolver: false
+  protobufjs: false # postinstall только проверяет версию

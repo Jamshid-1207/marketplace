@@ -5,6 +5,13 @@
 
 ## [Unreleased] · Этап 1: каркас
 ### Added
+- **Шаг 5: `libs/observability`** (`type:infra`, `platform:node`).
+  - `ObservabilityModule.forRoot({ serviceName, readinessChecks, imports })`: логгер, контекст цепочки, health.
+  - Контекст цепочки на `AsyncLocalStorage`: `runWithContext`, `runInNewChain`, `requireContext`. `CorrelationMiddleware` берёт `X-Request-Id` (небезопасный заменяет новым id) и возвращает его в ответе.
+  - pino через nestjs-pino: в каждой записи `service`, `correlationId`, `traceId`, `spanId`; health-пробы в лог не пишутся.
+  - `/health/live` и `/health/ready` на terminus: проверки готовности подключаются извне, у каждой таймаут 2 с, упавшая даёт 503 с причиной.
+  - `initTelemetry` (OTLP HTTP; HTTP, Express, pg, Nest) и `currentTraceHeaders`/`runWithTraceHeaders` для передачи `traceparent` через outbox и Kafka.
+  - Тесты: 18 (контекст, трейс на in-memory провайдере, модуль через supertest). Рантайм в настоящем Node проверен вручную: Nest 12 из CommonJS, ESM-хуки, поля логов.
 - **Шаг 4: `libs/contracts`** (`type:contracts`, `platform:shared`; зависит только от `zod`).
   - **Конверт:** `EnvelopeSchema` и `createEnvelope(definition, payload, { aggregateId, aggregateVersion }, { correlationId, causationId })`. Контекст передаётся явно: в contracts нет Node API.
   - **Реестр:** `defineMessage` проверяет имя по соглашению ADR-0002 и запрещает команду в топике событий (и наоборот). `MessageRegistry` запрещает менять топик или агрегат между версиями и даёт `verify()` (версии без пропусков, upcaster на каждую старую). `decode()`: конверт → схема своей версии → upcast → схема последней версии; нарушения — `ContractError`, неизвестный тип — `unknown-type`.
@@ -24,6 +31,7 @@
 ### Decided
 - PostgreSQL 16; деньги в TS/JSON — safe-integer `number`, в базе `bigint`; id — UUID v7 в колонках `uuid`; `libs/auth` переносится на этап 2; outbox relay на polling.
 ### Decided
+- **NestJS 12.** Распространяется только в ESM; наш код остаётся CommonJS и грузит Nest через `require(esm)` из Node 24. Jest — с `--experimental-vm-modules` (`targetDefaults.test` в `nx.json`). OpenTelemetry — через синхронные ESM-хуки `import-in-the-middle`, отсюда `engines.node >= 24.11.1`. Инструментация `nestjs-core` пока не поддерживает Nest 12 (SD-01, ревизия 6).
 - SD-01, ревизия 5: служебное событие названо `smoke.pinged`, а не `smoke.ping`: имя события — действие в прошедшем времени (ADR-0002, п. 5).
 - SD-01, ревизия 4: декларация топиков — `topics.conf`, а не `topics.json` (в образе Kafka нечем разбирать JSON); запуск через `infra/up.sh`, потому что `up --wait` считает ошибкой завершившиеся одноразовые контейнеры.
 - SD-01 утверждён (ревизия 3). Версии на момент init: Nx 23.3, TypeScript 6.0 (7.x не поддерживает typescript-eslint), NestJS 12, Prisma 7.10 (8.x в rc), pnpm 12 через `npm i -g` вместо corepack.
