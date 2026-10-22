@@ -5,7 +5,9 @@
 
 ## [Unreleased] · Этап 2: оформление без склада
 ### Added
-- `docs/system-design/02-checkout-without-stock.md`: дизайн этапа 2 (на согласовании) — gateway, order, payment, fake-psp, `libs/auth`, 12 сценариев готовности, машина состояний этапа 2, вызовы провайдера без потерь и дублей, один трейс на оформление, job `e2e`.
+- `docs/system-design/02-checkout-without-stock.md`: дизайн этапа 2 — gateway, order, payment, fake-psp, `libs/auth`, 12 сценариев готовности, машина состояний этапа 2, вызовы провайдера без потерь и дублей, один трейс на оформление, job `e2e`.
+### Decided
+- SD-02 утверждён: корзина — на этапе 7 со storefront; ключи JWT до этапа 5 — по JWKS из gateway (эфемерный ключ); сбой payment между списанием у провайдера и записью результата проверяется интеграционным тестом без точек отказа в рабочем коде; тестовые пользователи и seed-каталог временно в `libs/contracts/src/dev/`.
 
 ## [0.2.0] - 2026-10-22 · Этап 1: каркас ✅
 Критерии SD-01 выполнены, все четыре job'а CI зелёные: `check`, `integration`, `infra-smoke`, `generator-smoke`.
