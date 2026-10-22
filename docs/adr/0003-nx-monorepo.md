@@ -132,7 +132,7 @@ export type PaymentCapturedV1 = z.infer<typeof PaymentCapturedV1>;
 
 ### 6. Сборка и Docker
 
-- **Nest-сервисы:** образ готовится через `nx prune <app>`. В выходной папке оказываются только production-зависимости сервиса и нужные ему workspace-пакеты. Multi-stage Dockerfile. Опция `generatePackageJson` в этой настройке не поддерживается.
+- **Nest-сервисы:** образ готовится через `pnpm --filter @repo/<app> deploy --prod` (решение SD-01, ревизия 8, вместо `nx prune`). В выходной папке оказываются только production-зависимости сервиса и нужные ему workspace-пакеты. Multi-stage Dockerfile.
 - **Next.js:** `output: 'standalone'`; корень трассировки файлов — корень монорепо, иначе workspace-пакеты не попадут в сборку.
 - Docker-образы собираются только для затронутых приложений.
 

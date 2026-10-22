@@ -1,6 +1,6 @@
 # System Design 01: Каркас (этап 1)
 
-**Статус:** ✅ Утверждено · **Дата:** 2026-10-22 · **Ревизия:** 7
+**Статус:** ✅ Реализовано · **Дата:** 2026-10-22 · **Ревизия:** 8
 
 Этап 1 из ТЗ (раздел 8): монорепо, локальная инфраструктура, общие libs, шаблон сервиса, CI. Бизнес-логики на этом этапе нет: строим то, на чём будут стоять все 8 сервисов. Правила взяты из ADR-0001…0004, здесь только конкретика реализации.
 
@@ -60,7 +60,7 @@ marketplace/
 │   ├── jaeger/config.yaml
 │   ├── up.sh                    # pnpm infra:up
 │   └── smoke.sh                 # pnpm infra:smoke, критерий 1
-├── compose.yaml                 # infra + include: список apps/<name>/compose.yaml
+├── compose.yaml                 # инфраструктура; сервисы дописывает генератор
 ├── .env.example
 ├── eslint.config.mjs  nx.json  pnpm-workspace.yaml  tsconfig.base.json
 └── .github/workflows/ci.yml
@@ -86,7 +86,7 @@ marketplace/
   - **DLQ тоже декларируется.** Автосоздание выключено, поэтому без топика `<group>.dlq` отправка в DLQ падала бы, offset не коммитился бы, и партиция стояла бы вечно. Генератор добавляет `<name>-service.dlq` в `topics.conf`.
 - **Postgres: provisioning вместо init-скрипта.** `docker-entrypoint-initdb.d` выполняется только на пустом томе, поэтому добавить базу нового сервиса без пересоздания тома нельзя, а `demo` из генератора базы бы не получил. Вместо этого одноразовый контейнер `db-provision` при каждом `up` идемпотентно приводит Postgres к `infra/postgres/services.txt`: для каждого сервиса — роль `<name>_svc`, `<name>_db` и `<name>_db_shadow` с владельцем, `REVOKE CONNECT … FROM PUBLIC` (ADR-0004, п. 1). Пароль — из env `<NAME>_DB_PASSWORD`; если его нет, скрипт падает. Шаги `<name>-migrate` зависят от `db-provision: service_completed_successfully`. `max_connections=100`, бюджет — ADR-0004, п. 5.
 - **Jaeger** — хранилище в памяти с `max_traces=50000`, иначе он упирается в лимит памяти.
-- **Сервисы** подключаются через `include:` в корневом `compose.yaml`. `include` не поддерживает glob, поэтому строку `- apps/<name>/compose.yaml` в корневой файл дописывает генератор (п. 7). Пути внутри включённого файла считаются от его папки: `build.context` в `apps/<name>/compose.yaml` — `../..` (корень монорепо).
+- **Сервисы** приложения генератор дописывает прямо в корневой `compose.yaml` (п. 7): через `include` не разрешились бы `depends_on` на инфраструктуру.
 - `.env.example` коммитится, `.env` — в `.gitignore`. Для локальной разработки достаточно `cp .env.example .env`.
 
 ## 6. Общие библиотеки
@@ -196,18 +196,26 @@ await idempotent(tx, 'crm.ltv', envelope.eventId, async () => {
 
 | Что создаётся или меняется        | Содержание                                                                                  |
 | --------------------------------- | ------------------------------------------------------------------------------------------- |
-| `apps/<name>/src/instrumentation.ts`, `main.ts` | `initTelemetry`; Nest app → relay и consumer runner                           |
-| слои `domain/ application/ infrastructure/ interface/` | пустые, с правилом `no-restricted-imports` для `domain` (SD-00, п. 8)  |
+| `src/instrumentation.ts`, `main.ts` | `initTelemetry` из подпути `@repo/observability/telemetry` (не тянет Nest раньше хуков); `main.ts` — HTTP-сервер или команда `dlq-reprocess` |
+| `src/config.ts`                   | конфигурация из env на zod, ошибка при старте; режимы `server` и `cli`                       |
+| `src/infrastructure/`             | `PrismaService`, Kafka, producer, relay, consumer runner, их запуск и остановка, очистка `processed_events`, проверки готовности |
+| слои                              | полная схема — пустые `domain/ application/ interface/`, правило `no-restricted-imports` для `domain` в корневом ESLint; `--thin` — `handlers/ repositories/ api/` (SD-00, п. 8). Обвязка в обеих схемах — в `src/infrastructure/` |
 | `prisma/schema.prisma`, `prisma.config.ts` | модели `Outbox`, `ProcessedEvent`; output `src/generated/prisma`, `moduleFormat = "cjs"`; adapter-pg, пул из `DB_POOL_MAX` (ADR-0004, п. 4–5) |
-| первая миграция                   | DDL `outbox` и `processed_events` из `libs/*/sql/` (п. 6)                                    |
-| `project.json`                    | теги `type:app`, `platform:node`; таргеты `prisma-generate`, `serve`, `build`, `test`, `test-integration`, `migrate` |
-| `Dockerfile`                      | multi-stage: `deps` → `build` → `migrate` (Prisma CLI) → `runtime` (`nx prune`, ADR-0003, п. 6) |
-| `apps/<name>/compose.yaml`        | `<name>-migrate` (одноразовый, после `db-provision`) и `<name>` с `depends_on: service_completed_successfully`, профили `core`/`full`, `build.context: ../..` |
-| корневой `compose.yaml`           | строка в `include:`                                                                         |
+| первая миграция                   | DDL `outbox` и `processed_events` из `libs/*/sql/` без изменений (п. 6)                      |
+| `package.json` (`nx`)             | теги `type:app`, `platform:node`; таргеты `prisma-generate`, `build`, `test`, `test-integration`, `serve`, `migrate`; project references на libs сразу в tsconfig |
+| `Dockerfile`                      | multi-stage: `deps` (`pnpm fetch`) → `build` (`nx build` и `pnpm deploy --prod`) → `migrate` (Prisma CLI) → `runtime` |
+| корневой `compose.yaml`           | сервисы `<name>-migrate` (одноразовый, после `db-provision`) и `<name>` (после миграций, `kafka-init`, `kafka`, `jaeger`), профили `core`/`full`, healthcheck по `/health/ready` |
 | `infra/postgres/services.txt`     | строка `<name>`                                                                             |
 | `infra/kafka/topics.conf`         | топик `<name>-service.dlq`                                                                  |
-| `.env.example`                    | `<NAME>_DB_PASSWORD`, `DB_POOL_MAX` и прочие ключи сервиса                                  |
-| тесты                             | unit-пример, интеграционный тест «outbox → Kafka → собственный consumer → processed_events» |
+| `.env.example`                    | `<NAME>_DB_PASSWORD`                                                                        |
+| тесты                             | unit-пример (`config`), интеграционный тест «outbox → Kafka → собственный consumer → `processed_events`» и `/health/ready` на Testcontainers; схема базы — миграциями сервиса |
+
+**Решения, уточнённые при реализации:**
+- **Сервисы пишутся прямо в корневой `compose.yaml`, а не через `include`.** Включённый файл Compose проверяет как самостоятельный, и `depends_on` на `postgres` и `kafka` из корня в нём не разрешились бы. Генератор правит YAML через библиотеку `yaml`, комментарии сохраняются.
+- **Runtime-образ — `pnpm deploy --prod`, а не `nx prune`** (ADR-0003, п. 6): тот же результат (только production-зависимости и нужные workspace-пакеты) без отдельных таргетов prune.
+- **Контейнеры для тестов — `libs/testing`**: `startKafka`, `startPostgres` и помощники нужны и libs, и каждому сервису.
+- **`ConsumerRunner` без обработчиков не запускает consumer**: сервис может только публиковать.
+- **pnpm разрешены install-скрипты Prisma** (`@prisma/engines` скачивает движок миграций).
 
 Генератор должен оставаться рабочим, поэтому CI создаёт из него временный `demo`-сервис, прогоняет все его задачи и выбрасывает (п. 9).
 
@@ -232,7 +240,7 @@ await idempotent(tx, 'crm.ltv', envelope.eventId, async () => {
 | ------------------ | ---------------------------------------------------------------------------------------------- |
 | `check`            | `nx affected -t lint typecheck test build` (ADR-0003, п. 7)                                     |
 | `integration`      | `nx affected -t test-integration`. Docker на `ubuntu-latest` уже есть, Testcontainers работает |
-| `generator-smoke`  | `nx affected -t smoke`: таргет `smoke` у проекта генератора генерирует `demo`, запускает его `lint typecheck test test-integration build` и ничего не коммитит. Генератор зависит от libs, поэтому smoke срабатывает и при их изменении |
+| `generator-smoke`  | `nx affected -t smoke` → `tools/generators/smoke.sh`: генерирует `demo`; `lint typecheck test build`; `test-integration`; `prisma migrate diff` (схема совпадает с миграциями); образ и запуск в compose до `/health/ready` = 200; сервис `demo` в Jaeger и `traceId` в логах (проверка ESM-хуков OTel в настоящем Node); `dlq-reprocess`. Ничего не коммитит. Генератор зависит от libs (`implicitDependencies`), поэтому smoke срабатывает и при их изменении |
 | `infra-smoke`      | `cp .env.example .env`, `infra/up.sh`, `infra/smoke.sh`; затем ещё раз `up.sh` и `smoke.sh` — проверка идемпотентности |
 
 Node берётся из `.nvmrc` (`node-version-file`), а не `lts/*` из примера в ADR-0003. Репозиторий — приватный `marketplace` на GitHub (бесплатных минут Actions на приватный репо хватает с запасом).

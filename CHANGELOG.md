@@ -3,7 +3,30 @@
 Все изменения проекта. Формат: [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/), версии по этапам.
 Типы: **Added**, **Changed**, **Fixed**, **Removed**, **Decided** (архитектурные решения).
 
-## [Unreleased] · Этап 1: каркас
+## [0.2.0] - 2026-10-22 · Этап 1: каркас ✅
+Критерии SD-01 выполнены, все четыре job'а CI зелёные: `check`, `integration`, `infra-smoke`, `generator-smoke`.
+
+### Added
+- **Шаг 7: генератор сервиса** `pnpm nx g @repo/generators:service <name> [--thin] [--port]`.
+  - Шаблон: Nest 12 со своей конфигурацией на zod и режимами `server`/`cli`, `PrismaService` на adapter-pg, Kafka, producer, outbox relay, consumer runner с запуском и остановкой, очистка `processed_events`, проверки готовности, `instrumentation.ts`, команда `dlq-reprocess`, Dockerfile (`pnpm deploy`), первая миграция из DDL libs, unit- и интеграционный тест.
+  - Генератор дописывает базу в `services.txt`, DLQ в `topics.conf`, пароль в `.env.example`, сервисы `<name>-migrate` и `<name>` в корневой `compose.yaml`, ссылку в `tsconfig.json`. Версии берёт из libs.
+  - 10 unit-тестов генератора.
+  - CI job `generator-smoke` (`tools/generators/smoke.sh`): генерация `demo` → задачи Nx → интеграционные тесты → `prisma migrate diff` без расхождений → образ и compose до `/health/ready` = 200 → сервис в Jaeger и `traceId` в логах → `dlq-reprocess`.
+- `libs/testing`: Testcontainers (`apache/kafka`, `postgres`) и помощники тестов для libs и сервисов.
+- `@repo/observability/telemetry`: отдельный подпуть, чтобы `instrumentation.ts` не загружал Nest раньше ESM-хуков.
+- Правило ESLint для слоя `domain` (SD-00, п. 8); тег `type:tooling`.
+- README: быстрый старт.
+### Fixed
+- `correlationId` из логов kafkajs (номер запроса протокола) затирал `correlationId` цепочки — теперь `kafkaCorrelationId`.
+- `dlq-reprocess`: повтор `retriable`-ошибок kafkajs admin (NOT_COORDINATOR у новой группы).
+- `ConsumerRunner` без обработчиков не запускает consumer.
+### Decided
+- SD-01, ревизия 8 (✅ Реализовано): сервисы — прямо в корневом `compose.yaml` вместо `include`; образ — `pnpm deploy --prod` вместо `nx prune` (ADR-0003, п. 6); обвязка сервиса в обеих схемах слоёв — `src/infrastructure/`; pnpm разрешены install-скрипты Prisma.
+### Known
+- kafkajs 2.2.4 на Node 24 печатает `TimeoutNegativeWarning`: безвредно, известная особенность kafkajs. Замена клиента — ADR-0002, «Потом».
+- Инструментация OTel `nestjs-core` пока не поддерживает Nest 12: трейс запроса строится по спанам HTTP и Express.
+
+## Этап 1, шаги 1–6
 ### Added
 - **Шаг 6: шина.**
   - `libs/idempotency`: `idempotent(tx, handler, eventId, fn)`, очистка `processed_events` порциями, каноническая DDL `sql/processed_events.sql`.
