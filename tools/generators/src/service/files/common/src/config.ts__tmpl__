@@ -5,7 +5,7 @@ export const SERVICE_NAME = '<%= name %>';
 
 /** Конфигурация — только из env (ADR-0004, п. 7). Ошибка при старте лучше, чем в первом запросе. */
 export const ConfigSchema = z.object({
-  PORT: z.coerce.number().int().min(0).default(3000),
+  PORT: z.coerce.number().int().min(0).default(3000),<% if (!bare) { %>
   DATABASE_URL: z.string().startsWith('postgres'),
   // явный размер пула: Σ пулов ≤ max_connections (ADR-0004, п. 5)
   DB_POOL_MAX: z.coerce.number().int().positive().default(5),
@@ -14,7 +14,7 @@ export const ConfigSchema = z.object({
     .min(1)
     .transform((value) => value.split(',').map((broker) => broker.trim())),
   // новая группа читает с начала топика: тесты и replay; сервисы — нет
-  KAFKA_FROM_BEGINNING: z.stringbool().default(false),
+  KAFKA_FROM_BEGINNING: z.stringbool().default(false),<% } %>
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
   LOG_PRETTY: z.stringbool().default(false),
 });
@@ -29,7 +29,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
   return result.data;
 }
 
-/** `server` — HTTP, relay и consumer; `cli` — служебные команды без фоновых процессов. */
+/** `server` — HTTP<% if (!bare) { %>, relay и consumer<% } %>; `cli` — служебные команды без фоновых процессов. */
 export type RunMode = 'server' | 'cli';
 
 export const CONFIG = Symbol('CONFIG');

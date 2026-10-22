@@ -3,9 +3,10 @@
 ARG NODE_IMAGE=<%= nodeImage %>
 
 FROM ${NODE_IMAGE} AS base
-# openssl нужен движку миграций Prisma на Alpine
+<% if (!bare) { %># openssl нужен движку миграций Prisma на Alpine
 RUN apk add --no-cache openssl && npm install -g pnpm@<%= versions.pnpm %> && npm cache clean --force
-WORKDIR /repo
+<% } else { %>RUN npm install -g pnpm@<%= versions.pnpm %> && npm cache clean --force
+<% } %>WORKDIR /repo
 ENV NX_DAEMON=false NX_NO_CLOUD=true CI=true
 
 # зависимости ставятся по lockfile до копирования исходников: слой переиспользуется
@@ -19,12 +20,12 @@ FROM deps AS build
 RUN pnpm nx run @repo/<%= name %>:build --output-style=static
 # только production-зависимости сервиса и нужные ему workspace-пакеты
 RUN pnpm --filter @repo/<%= name %> deploy --legacy --prod /out
-
+<% if (!bare) { %>
 # одноразовый шаг миграций (ADR-0004, п. 6): Prisma CLI и prisma/
 FROM deps AS migrate
 WORKDIR /repo/apps/<%= name %>
 CMD ["pnpm", "exec", "prisma", "migrate", "deploy"]
-
+<% } %>
 FROM ${NODE_IMAGE} AS runtime
 ENV NODE_ENV=production
 WORKDIR /app

@@ -6,9 +6,11 @@
   "properties": {
     "name": {
       "type": "string",
-      "description": "Имя сервиса: латиница в нижнем регистре и цифры (order, payment). Из него строятся база, роль, топик DLQ и сервис в compose.",
-      "pattern": "^[a-z][a-z0-9]*$",
-      "$default": { "$source": "argv", "index": 0 },
+      "description": "Имя сервиса. С базой — латиница в нижнем регистре и цифры (order, payment): из него строятся база, роль, топик DLQ. С --bare допускается дефис (fake-psp).",
+      "$default": {
+        "$source": "argv",
+        "index": 0
+      },
       "x-prompt": "Имя сервиса?"
     },
     "thin": {
@@ -16,9 +18,14 @@
       "description": "Тонкая схема слоёв (handlers/repositories/api) для проекций и notification (SD-00, п. 8).",
       "default": false
     },
+    "bare": {
+      "type": "boolean",
+      "description": "Без базы и Kafka: только конфигурация, наблюдаемость, health, Dockerfile, compose (gateway, заглушки внешних систем; SD-02, п. 8).",
+      "default": false
+    },
     "port": {
       "type": "number",
-      "description": "Порт хоста в compose. По умолчанию — следующий свободный после 3000."
+      "description": "Порт хоста в compose. Без него сервис наружу не открыт (ADR-0001, п. 1)."
     }
   },
   "required": ["name"]

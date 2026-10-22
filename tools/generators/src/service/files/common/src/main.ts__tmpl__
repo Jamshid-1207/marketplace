@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
-import { ConsumerRunner } from '@repo/kafka';
-import { Logger } from 'nestjs-pino';
+<% if (!bare) { %>import { ConsumerRunner } from '@repo/kafka';
+<% } %>import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module';
 import { loadConfig } from './config';
 
@@ -9,10 +9,15 @@ async function serve(): Promise<void> {
   const config = loadConfig();
   const app = await NestFactory.create(AppModule.forRoot(config), { bufferLogs: true });
   app.useLogger(app.get(Logger));
-  app.enableShutdownHooks(); // SIGTERM: дослать outbox, остановить consumer, закрыть соединения
+  app.enableShutdownHooks(); // SIGTERM: <% if (bare) { %>закрыть соединения<% } else { %>дослать outbox, остановить consumer, закрыть соединения<% } %>
   await app.listen(config.PORT);
 }
-
+<% if (bare) { %>
+serve().catch((error: unknown) => {
+  console.error(error);
+  process.exit(1);
+});
+<% } else { %>
 /** `node dist/main.js dlq-reprocess` — повторная обработка DLQ после исправления (ADR-0002, п. 8). */
 async function dlqReprocess(): Promise<void> {
   const app = await NestFactory.createApplicationContext(AppModule.forRoot(loadConfig(), 'cli'), {
@@ -33,3 +38,4 @@ command().catch((error: unknown) => {
   console.error(error);
   process.exit(1);
 });
+<% } %>

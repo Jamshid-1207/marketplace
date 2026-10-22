@@ -4,25 +4,25 @@
   "private": true,
   "type": "commonjs",
   "main": "./dist/main.js",
-  "files": ["dist", "prisma", "prisma.config.ts"],
+  "files": [<% if (bare) { %>"dist"<% } else { %>"dist", "prisma", "prisma.config.ts"<% } %>],
   "nx": {
     "tags": ["type:app", "platform:node"],
-    "targets": {
+    "targets": {<% if (!bare) { %>
       "prisma-generate": {
         "executor": "nx:run-commands",
         "options": { "command": "prisma generate", "cwd": "{projectRoot}" },
         "inputs": ["{projectRoot}/prisma/**/*", "{projectRoot}/prisma.config.ts"],
         "outputs": ["{projectRoot}/src/generated/prisma"],
         "cache": true
-      },
+      },<% } %>
       "build": {
         "executor": "nx:run-commands",
         "options": { "command": "tsc --build tsconfig.app.json", "cwd": "{projectRoot}" },
-        "dependsOn": ["prisma-generate", "^build"],
+        "dependsOn": [<% if (!bare) { %>"prisma-generate", <% } %>"^build"],
         "inputs": ["production", "^production"],
         "outputs": ["{projectRoot}/dist"],
         "cache": true
-      },
+      },<% if (!bare) { %>
       "typecheck": { "dependsOn": ["prisma-generate"] },
       "test": { "dependsOn": ["prisma-generate"] },
       "test-integration": {
@@ -35,21 +35,6 @@
         "dependsOn": ["prisma-generate", "^build"],
         "cache": false
       },
-      "serve": {
-        "executor": "nx:run-commands",
-        "continuous": true,
-        "dependsOn": ["build"],
-        "options": {
-          "command": "node --require ./dist/instrumentation.js dist/main.js",
-          "cwd": "{projectRoot}",
-          "env": {
-            "PORT": "<%= port %>",
-            "DATABASE_URL": "postgresql://<%= name %>_svc:<%= name %>_local@localhost:5432/<%= name %>_db",
-            "KAFKA_BROKERS": "localhost:9092",
-            "LOG_PRETTY": "true"
-          }
-        }
-      },
       "migrate": {
         "executor": "nx:run-commands",
         "options": {
@@ -60,28 +45,43 @@
             "SHADOW_DATABASE_URL": "postgresql://<%= name %>_svc:<%= name %>_local@localhost:5432/<%= name %>_db_shadow"
           }
         }
+      },<% } %>
+      "serve": {
+        "executor": "nx:run-commands",
+        "continuous": true,
+        "dependsOn": ["build"],
+        "options": {
+          "command": "node --require ./dist/instrumentation.js dist/main.js",
+          "cwd": "{projectRoot}",
+          "env": {
+            "PORT": "<%= servePort %>",<% if (!bare) { %>
+            "DATABASE_URL": "postgresql://<%= name %>_svc:<%= name %>_local@localhost:5432/<%= name %>_db",
+            "KAFKA_BROKERS": "localhost:9092",<% } %>
+            "LOG_PRETTY": "true"
+          }
+        }
       }
     }
   },
   "dependencies": {
     "@nestjs/common": "<%= versions.nest %>",
     "@nestjs/core": "<%= versions.nest %>",
-    "@nestjs/platform-express": "<%= versions.nest %>",
+    "@nestjs/platform-express": "<%= versions.nest %>",<% if (!bare) { %>
     "@prisma/adapter-pg": "<%= versions.prisma %>",
-    "@prisma/client": "<%= versions.prisma %>",
-    "@repo/contracts": "workspace:*",
+    "@prisma/client": "<%= versions.prisma %>",<% } %>
+    "@repo/contracts": "workspace:*",<% if (!bare) { %>
     "@repo/idempotency": "workspace:*",
-    "@repo/kafka": "workspace:*",
-    "@repo/observability": "workspace:*",
-    "@repo/outbox": "workspace:*",
+    "@repo/kafka": "workspace:*",<% } %>
+    "@repo/observability": "workspace:*",<% if (!bare) { %>
+    "@repo/outbox": "workspace:*",<% } %>
     "nestjs-pino": "<%= versions.nestjsPino %>",
     "reflect-metadata": "<%= versions.reflectMetadata %>",
     "rxjs": "<%= versions.rxjs %>",
     "tslib": "^2.8.1",
     "zod": "<%= versions.zod %>"
-  },
+  }<% if (!bare) { %>,
   "devDependencies": {
     "@repo/testing": "workspace:*",
     "prisma": "<%= versions.prisma %>"
-  }
+  }<% } %>
 }

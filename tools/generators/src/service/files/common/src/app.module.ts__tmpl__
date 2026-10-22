@@ -1,8 +1,8 @@
 import { Module, type DynamicModule } from '@nestjs/common';
 import { ObservabilityModule } from '@repo/observability';
 import { ConfigModule, SERVICE_NAME, type Config, type RunMode } from './config';
-import { InfrastructureModule, readinessChecks } from './infrastructure/infrastructure.module';
-
+<% if (!bare) { %>import { InfrastructureModule, readinessChecks } from './infrastructure/infrastructure.module';
+<% } %>
 @Module({})
 export class AppModule {
   static forRoot(config: Config, mode: RunMode = 'server'): DynamicModule {
@@ -13,11 +13,11 @@ export class AppModule {
         ObservabilityModule.forRoot({
           serviceName: SERVICE_NAME,
           level: config.LOG_LEVEL,
-          pretty: config.LOG_PRETTY,
+          pretty: config.LOG_PRETTY,<% if (!bare) { %>
           readinessChecks,
-          imports: [InfrastructureModule],
-        }),
-        InfrastructureModule,
+          imports: [InfrastructureModule],<% } %>
+        }),<% if (!bare) { %>
+        InfrastructureModule,<% } %>
         // модули фич подключаются здесь
       ],
     };

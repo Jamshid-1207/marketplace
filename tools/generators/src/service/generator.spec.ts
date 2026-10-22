@@ -120,7 +120,7 @@ describe('генератор сервиса', () => {
     expect(Object.keys(compose.services)).toEqual(
       expect.arrayContaining(['postgres', 'kafka', 'demo-migrate', 'demo']),
     );
-    expect(compose.services.demo.ports).toEqual(['3001:3000']);
+    expect(compose.services.demo.ports).toBeUndefined();
     expect(compose.services.demo.environment.DATABASE_URL).toBe(
       'postgresql://demo_svc:${DEMO_DB_PASSWORD}@postgres:5432/demo_db',
     );
@@ -132,10 +132,12 @@ describe('генератор сервиса', () => {
     expect(read(tree, 'compose.yaml')).toContain('бюджет — ADR-0004');
   });
 
-  it('второму сервису достаётся следующий порт', async () => {
+  it('порт хоста публикуется только по --port', async () => {
     await serviceGenerator(tree, { name: 'demo' });
-    await serviceGenerator(tree, { name: 'other' });
-    expect(parse(read(tree, 'compose.yaml')).services.other.ports).toEqual(['3002:3000']);
+    await serviceGenerator(tree, { name: 'other', port: 3002 });
+    const compose = parse(read(tree, 'compose.yaml'));
+    expect(compose.services.demo.ports).toBeUndefined();
+    expect(compose.services.other.ports).toEqual(['3002:3000']);
   });
 
   it('сервис из уже известного списка не дублирует строки', async () => {
@@ -149,5 +151,74 @@ describe('генератор сервиса', () => {
     await expect(serviceGenerator(tree, { name: 'Bad-Name' })).rejects.toThrow(/не подходит/);
     await serviceGenerator(tree, { name: 'demo' });
     await expect(serviceGenerator(tree, { name: 'demo' })).rejects.toThrow(/уже существует/);
+  });
+
+  describe('--bare', () => {
+    it('сервис без базы и Kafka: нет Prisma, шины, миграций и записей инфраструктуры', async () => {
+      const before = {
+        services: read(tree, 'infra/postgres/services.txt'),
+        topics: read(tree, 'infra/kafka/topics.conf'),
+        env: read(tree, '.env.example'),
+      };
+      await serviceGenerator(tree, { name: 'fake-psp', bare: true, port: 4000 });
+
+      for (const file of [
+        'package.json',
+        'Dockerfile',
+        'src/main.ts',
+        'src/config.ts',
+        'src/config.spec.ts',
+      ]) {
+        expect(tree.exists(`apps/fake-psp/${file}`)).toBe(true);
+      }
+      for (const path of [
+        'prisma',
+        'prisma.config.ts',
+        'src/infrastructure',
+        'src/domain',
+        'jest.int.config.cjs',
+      ]) {
+        expect(tree.exists(`apps/fake-psp/${path}`)).toBe(false);
+      }
+      expect(read(tree, 'infra/postgres/services.txt')).toBe(before.services);
+      expect(read(tree, 'infra/kafka/topics.conf')).toBe(before.topics);
+      expect(read(tree, '.env.example')).toBe(before.env);
+    });
+
+    it('package.json, Dockerfile и код без зависимостей от базы и Kafka', async () => {
+      await serviceGenerator(tree, { name: 'fake-psp', bare: true });
+      const pkg = readJson(tree, 'apps/fake-psp/package.json');
+      expect(Object.keys(pkg.dependencies)).not.toEqual(expect.arrayContaining(['@prisma/client']));
+      expect(pkg.dependencies['@repo/kafka']).toBeUndefined();
+      expect(pkg.devDependencies).toBeUndefined();
+      expect(pkg.nx.targets['prisma-generate']).toBeUndefined();
+      expect(pkg.nx.targets.build.dependsOn).toEqual(['^build']);
+      expect(read(tree, 'apps/fake-psp/Dockerfile')).not.toContain('AS migrate');
+      expect(read(tree, 'apps/fake-psp/src/main.ts')).not.toContain('ConsumerRunner');
+      expect(read(tree, 'apps/fake-psp/src/config.ts')).not.toContain('DATABASE_URL');
+      expect(read(tree, 'apps/fake-psp/src/app.module.ts')).not.toContain('InfrastructureModule');
+      expect(readJson(tree, 'apps/fake-psp/tsconfig.app.json').references).toEqual([
+        { path: '../../libs/contracts/tsconfig.lib.json' },
+        { path: '../../libs/observability/tsconfig.lib.json' },
+      ]);
+    });
+
+    it('в compose — один сервис без миграций, зависит только от Jaeger', async () => {
+      await serviceGenerator(tree, { name: 'fake-psp', bare: true, port: 4000 });
+      const compose = parse(read(tree, 'compose.yaml'));
+      expect(compose.services['fake-psp-migrate']).toBeUndefined();
+      expect(compose.services['fake-psp'].ports).toEqual(['4000:3000']);
+      expect(compose.services['fake-psp'].depends_on).toEqual({
+        jaeger: { condition: 'service_healthy' },
+      });
+      expect(compose.services['fake-psp'].environment.DATABASE_URL).toBeUndefined();
+    });
+
+    it('дефис в имени допустим только без базы', async () => {
+      await expect(serviceGenerator(tree, { name: 'fake-psp' })).rejects.toThrow(/не подходит/);
+      await expect(serviceGenerator(tree, { name: 'bad-', bare: true })).rejects.toThrow(
+        /не подходит/,
+      );
+    });
   });
 });

@@ -1,7 +1,21 @@
 import { loadConfig } from './config';
 
 describe('loadConfig', () => {
-  const required = {
+<% if (bare) { %>  it('применяет значения по умолчанию', () => {
+    expect(loadConfig({})).toEqual({ PORT: 3000, LOG_LEVEL: 'info', LOG_PRETTY: false });
+  });
+
+  it('переводит строки env в числа и булевы значения', () => {
+    expect(loadConfig({ PORT: '8080', LOG_PRETTY: 'true' })).toMatchObject({
+      PORT: 8080,
+      LOG_PRETTY: true,
+    });
+  });
+
+  it('недопустимое значение — ошибка с именем поля', () => {
+    expect(() => loadConfig({ LOG_LEVEL: 'loud' })).toThrow(/LOG_LEVEL/);
+  });
+<% } else { %>  const required = {
     DATABASE_URL: 'postgresql://<%= name %>_svc:secret@localhost:5432/<%= name %>_db',
     KAFKA_BROKERS: 'localhost:9092, localhost:9093',
   };
@@ -26,4 +40,4 @@ describe('loadConfig', () => {
   it('без обязательных переменных — ошибка со списком полей', () => {
     expect(() => loadConfig({})).toThrow(/DATABASE_URL[\s\S]*KAFKA_BROKERS/);
   });
-});
+<% } %>});
