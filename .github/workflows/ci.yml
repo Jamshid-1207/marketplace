@@ -14,7 +14,7 @@ permissions:
   actions: read # nx-set-shas ищет последний успешный прогон
 
 jobs:
-  # SD-01, п. 9. Остальные job'ы (integration, generator-smoke, infra-smoke) добавляются со своими шагами
+  # SD-01, п. 9. Job'ы integration и generator-smoke добавляются со своими шагами
   check:
     runs-on: ubuntu-latest
     steps:
@@ -31,3 +31,20 @@ jobs:
       - run: pnpm format:check
       - run: pnpm nx sync:check
       - run: pnpm nx affected -t lint typecheck test build
+
+  # Критерий 1 SD-01: инфраструктура поднимается, повторный up ничего не ломает
+  infra-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: cp .env.example .env
+      - run: docker compose --profile infra up -d --wait --wait-timeout 300
+      - run: bash infra/smoke.sh
+      - name: Повторный up (provisioning и топики идемпотентны)
+        run: |
+          docker compose --profile infra up -d --wait --wait-timeout 300
+          bash infra/smoke.sh
+      - if: failure()
+        run: docker compose --profile infra logs --no-color
+      - if: always()
+        run: docker compose --profile infra down -v

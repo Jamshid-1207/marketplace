@@ -1,0 +1,10 @@
+# Сервисы с собственной базой (ADR-0004, п. 1). По строке на сервис: [a-z0-9_]+.
+# Для каждого db-provision создаёт роль <name>_svc и базы <name>_db, <name>_db_shadow.
+# Пароль — переменная <NAME>_DB_PASSWORD в .env. Новые строки дописывает генератор сервиса.
+auth
+catalog
+order
+payment
+erp
+crm
+notification
