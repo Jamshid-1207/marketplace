@@ -24,8 +24,10 @@ export function createKafka({ clientId, brokers, logger }: KafkaConfig): Kafka {
     logCreator:
       () =>
       ({ level, log }: LogEntry) => {
-        const { message, ...rest } = log;
-        const fields = { component: 'kafkajs', ...rest };
+        // у kafkajs свой correlationId — номер запроса протокола; он не должен затирать
+        // correlationId цепочки из контекста
+        const { message, correlationId, ...rest } = log;
+        const fields = { component: 'kafkajs', kafkaCorrelationId: correlationId, ...rest };
         if (level === logLevel.ERROR) logger.error(fields, message);
         else logger.warn(fields, message);
       },

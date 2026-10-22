@@ -62,11 +62,13 @@ for _ in $(seq 1 30); do
   sleep 2
 done
 services | grep -q '"demo"' || { echo "в Jaeger нет сервиса demo: $(services)" >&2; exit 1; }
-docker compose logs demo | grep -q '"traceId"'
+# вывод — в переменную: grep -q в конвейере под pipefail ловит SIGPIPE у docker compose logs
+logs="$(docker compose --profile core logs --no-color demo)"
+grep -q '"traceId"' <<<"$logs" || { echo 'в логах demo нет traceId' >&2; exit 1; }
 done_step
 
 step 'служебная команда dlq-reprocess'
-docker compose exec -T demo node dist/main.js dlq-reprocess
+docker compose --profile core exec -T demo node dist/main.js dlq-reprocess
 done_step
 
 echo 'generator smoke: всё в порядке'
