@@ -1,0 +1,15 @@
+{
+  "eventId": "0192b4c6-7a1e-7c3d-9f00-3b5e2a1d4c88",
+  "type": "smoke.pinged",
+  "version": 1,
+  "aggregateType": "smoke",
+  "aggregateId": "0192b4c6-6f00-7a2b-8c11-5d3e9a0b7f21",
+  "aggregateVersion": 1,
+  "occurredAt": "2026-10-22T10:00:00.000Z",
+  "correlationId": "req-0001",
+  "causationId": null,
+  "payload": {
+    "pingId": "0192b4c6-6f00-7a2b-8c11-5d3e9a0b7f21",
+    "note": "fixture"
+  }
+}

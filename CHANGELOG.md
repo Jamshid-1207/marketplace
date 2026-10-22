@@ -5,6 +5,13 @@
 
 ## [Unreleased] · Этап 1: каркас
 ### Added
+- **Шаг 4: `libs/contracts`** (`type:contracts`, `platform:shared`; зависит только от `zod`).
+  - **Конверт:** `EnvelopeSchema` и `createEnvelope(definition, payload, { aggregateId, aggregateVersion }, { correlationId, causationId })`. Контекст передаётся явно: в contracts нет Node API.
+  - **Реестр:** `defineMessage` проверяет имя по соглашению ADR-0002 и запрещает команду в топике событий (и наоборот). `MessageRegistry` запрещает менять топик или агрегат между версиями и даёт `verify()` (версии без пропусков, upcaster на каждую старую). `decode()`: конверт → схема своей версии → upcast → схема последней версии; нарушения — `ContractError`, неизвестный тип — `unknown-type`.
+  - **Деньги:** `Money`, `add`/`sub`/`sum`/`mulBp` (через `BigInt`, floor)/`toSafeNumber`, при выходе за safe integer — `MoneyError`.
+  - **Id:** `newId()` — UUID v7 без зависимостей, монотонный внутри процесса (RFC 9562, метод 1).
+  - Служебное событие `smoke.pinged` v1 (топик `smoke.events`) и контракт-тесты по `fixtures/`.
+  - Тесты: 42 (unit, property-based на fast-check, контрактные); покрытие 98% строк и 100% веток при пороге 80%.
 - **Шаг 3: локальная инфраструктура.**
   - `compose.yaml`: postgres 16.15, kafka 4.3.2 (KRaft, три listener'а, явный heap), kafbat-ui v1.5.0, jaeger 2.22.0 (память, `max_traces: 50000`), mailpit v1.31.6. Инфраструктура в профилях `infra`/`core`/`full`, у каждого контейнера лимит памяти.
   - `infra/postgres/provision.sh`: идемпотентно создаёт роли и базы по `services.txt` (7 сервисов из ADR-0004), выравнивает пароли по `.env`, делает `REVOKE CONNECT … FROM PUBLIC`.
@@ -17,6 +24,7 @@
 ### Decided
 - PostgreSQL 16; деньги в TS/JSON — safe-integer `number`, в базе `bigint`; id — UUID v7 в колонках `uuid`; `libs/auth` переносится на этап 2; outbox relay на polling.
 ### Decided
+- SD-01, ревизия 5: служебное событие названо `smoke.pinged`, а не `smoke.ping`: имя события — действие в прошедшем времени (ADR-0002, п. 5).
 - SD-01, ревизия 4: декларация топиков — `topics.conf`, а не `topics.json` (в образе Kafka нечем разбирать JSON); запуск через `infra/up.sh`, потому что `up --wait` считает ошибкой завершившиеся одноразовые контейнеры.
 - SD-01 утверждён (ревизия 3). Версии на момент init: Nx 23.3, TypeScript 6.0 (7.x не поддерживает typescript-eslint), NestJS 12, Prisma 7.10 (8.x в rc), pnpm 12 через `npm i -g` вместо corepack.
 ### Changed (ревью SD-01, ревизия 2)
