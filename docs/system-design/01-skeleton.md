@@ -1,6 +1,6 @@
 # System Design 01: Каркас (этап 1)
 
-**Статус:** ✅ Утверждено · **Дата:** 2026-10-22 · **Ревизия:** 3
+**Статус:** ✅ Утверждено · **Дата:** 2026-10-22 · **Ревизия:** 4
 
 Этап 1 из ТЗ (раздел 8): монорепо, локальная инфраструктура, общие libs, шаблон сервиса, CI. Бизнес-логики на этом этапе нет: строим то, на чём будут стоять все 8 сервисов. Правила взяты из ADR-0001…0004, здесь только конкретика реализации.
 
@@ -8,7 +8,7 @@
 
 | #   | Проверка                                                                                                                                                       |
 | --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | `docker compose --profile infra up -d --wait`: все контейнеры `healthy`, `db-provision` завершился успешно, Kafbat UI и Jaeger открываются. Повторный `up` ничего не ломает |
+| 1   | `pnpm infra:up`, затем `pnpm infra:smoke`: все контейнеры `healthy`, `db-provision` и `kafka-init` завершились успешно, базы и топики соответствуют декларации, чужая база недоступна, UI открываются. Повторный запуск ничего не ломает |
 | 2   | `pnpm nx run-many -t lint typecheck test build` проходит; граница модулей нарушается тестовым импортом → lint падает                                           |
 | 3   | `pnpm nx g @repo/generators:service demo` создаёт сервис, который проходит lint/typecheck/test/test-integration/build (в CI) и в compose отвечает `/health/ready` = 200 (проверяем руками) |
 | 4   | Интеграционные тесты libs на Testcontainers (настоящие Postgres и Kafka) зелёные                                                                              |
@@ -54,8 +54,11 @@ marketplace/
 ├── infra/
 │   ├── postgres/services.txt    # список сервисов с базой: по строке на сервис
 │   ├── postgres/provision.sh    # идемпотентное создание баз и пользователей
-│   ├── kafka/topics.json        # декларация топиков (ADR-0002, п. 3)
-│   └── kafka/create-topics.sh
+│   ├── kafka/topics.conf        # декларация топиков (ADR-0002, п. 3)
+│   ├── kafka/create-topics.sh
+│   ├── jaeger/config.yaml
+│   ├── up.sh                    # pnpm infra:up
+│   └── smoke.sh                 # pnpm infra:smoke, критерий 1
 ├── compose.yaml                 # infra + include: список apps/<name>/compose.yaml
 ├── .env.example
 ├── eslint.config.mjs  nx.json  pnpm-workspace.yaml  tsconfig.base.json
@@ -76,9 +79,10 @@ marketplace/
 
 - **Профили.** Инфраструктурные контейнеры объявлены с `profiles: [infra, core, full]`. Compose не запускает зависимость из выключенного профиля, поэтому `docker compose --profile core up` без этого не поднял бы `postgres` для сервисов.
 - **Kafka:** один узел KRaft (broker + controller), три listener'а: `INTERNAL://kafka:29092` для контейнеров, `EXTERNAL://localhost:9092` для сервисов, запущенных с хоста через `nx serve`, `CONTROLLER://:9093`. `auto.create.topics.enable=false`. `KAFKA_HEAP_OPTS=-Xms512m -Xmx512m`: без явного heap JVM ориентируется не на лимит контейнера, и его убивает OOM.
-- **Топики** описаны декларативно в `infra/kafka/topics.json`: имя, партиции, retention. `kafka-init` создаёт недостающие (`--if-not-exists`), приводит конфиг существующих (retention) к декларации через `kafka-configs --alter` и **падает**, если у существующего топика другое число партиций (ADR-0002, п. 3).
-  - На этапе 1 в списке только служебный `smoke.events` (без `_`: Kafka предупреждает о смешении `.` и `_` в именах, они сталкиваются в метриках).
-  - **DLQ тоже декларируется.** Автосоздание выключено, поэтому без топика `<group>.dlq` отправка в DLQ падала бы, offset не коммитился бы, и партиция стояла бы вечно. Генератор добавляет `<name>-service.dlq` в `topics.json`.
+- **Запуск — `pnpm infra:up`** (`infra/up.sh`). `docker compose up --wait` считает ошибкой любой завершившийся контейнер, даже с кодом 0, поэтому скрипт сначала ждёт healthy у долгоживущих контейнеров, затем запускает `db-provision` и `kafka-init` и проверяет их код выхода.
+- **Топики** описаны декларативно в `infra/kafka/topics.conf`: строка на топик — имя, партиции, retention. Не JSON: `kafka-init` работает на образе Kafka, где нет ни `jq`, ни `node`. `kafka-init` создаёт недостающие (`--if-not-exists`), приводит конфиг существующих (retention) к декларации через `kafka-configs --alter` и **падает**, если у существующего топика другое число партиций (ADR-0002, п. 3).
+  - На этапе 1 в списке только служебный `smoke.events`. Kafka предупреждает о любом имени с `.` или `_`: в метриках они сливаются. Для нас это не проблема, пока в именах нет `_` — а его нет ни в одном топике.
+  - **DLQ тоже декларируется.** Автосоздание выключено, поэтому без топика `<group>.dlq` отправка в DLQ падала бы, offset не коммитился бы, и партиция стояла бы вечно. Генератор добавляет `<name>-service.dlq` в `topics.conf`.
 - **Postgres: provisioning вместо init-скрипта.** `docker-entrypoint-initdb.d` выполняется только на пустом томе, поэтому добавить базу нового сервиса без пересоздания тома нельзя, а `demo` из генератора базы бы не получил. Вместо этого одноразовый контейнер `db-provision` при каждом `up` идемпотентно приводит Postgres к `infra/postgres/services.txt`: для каждого сервиса — роль `<name>_svc`, `<name>_db` и `<name>_db_shadow` с владельцем, `REVOKE CONNECT … FROM PUBLIC` (ADR-0004, п. 1). Пароль — из env `<NAME>_DB_PASSWORD`; если его нет, скрипт падает. Шаги `<name>-migrate` зависят от `db-provision: service_completed_successfully`. `max_connections=100`, бюджет — ADR-0004, п. 5.
 - **Jaeger** — хранилище в памяти с `max_traces=50000`, иначе он упирается в лимит памяти.
 - **Сервисы** подключаются через `include:` в корневом `compose.yaml`. `include` не поддерживает glob, поэтому строку `- apps/<name>/compose.yaml` в корневой файл дописывает генератор (п. 7). Пути внутри включённого файла считаются от его папки: `build.context` в `apps/<name>/compose.yaml` — `../..` (корень монорепо).
@@ -196,7 +200,7 @@ await idempotent(tx, 'crm.ltv', envelope.eventId, async () => {
 | `apps/<name>/compose.yaml`        | `<name>-migrate` (одноразовый, после `db-provision`) и `<name>` с `depends_on: service_completed_successfully`, профили `core`/`full`, `build.context: ../..` |
 | корневой `compose.yaml`           | строка в `include:`                                                                         |
 | `infra/postgres/services.txt`     | строка `<name>`                                                                             |
-| `infra/kafka/topics.json`         | топик `<name>-service.dlq`                                                                  |
+| `infra/kafka/topics.conf`         | топик `<name>-service.dlq`                                                                  |
 | `.env.example`                    | `<NAME>_DB_PASSWORD`, `DB_POOL_MAX` и прочие ключи сервиса                                  |
 | тесты                             | unit-пример, интеграционный тест «outbox → Kafka → собственный consumer → processed_events» |
 
@@ -223,7 +227,7 @@ await idempotent(tx, 'crm.ltv', envelope.eventId, async () => {
 | `check`            | `nx affected -t lint typecheck test build` (ADR-0003, п. 7)                                     |
 | `integration`      | `nx affected -t test-integration`. Docker на `ubuntu-latest` уже есть, Testcontainers работает |
 | `generator-smoke`  | `nx affected -t smoke`: таргет `smoke` у проекта генератора генерирует `demo`, запускает его `lint typecheck test test-integration build` и ничего не коммитит. Генератор зависит от libs, поэтому smoke срабатывает и при их изменении |
-| `infra-smoke`      | `cp .env.example .env`, `docker compose --profile infra up -d --wait`, проверка баз, пользователей и топиков, второй `up` |
+| `infra-smoke`      | `cp .env.example .env`, `infra/up.sh`, `infra/smoke.sh`; затем ещё раз `up.sh` и `smoke.sh` — проверка идемпотентности |
 
 Node берётся из `.nvmrc` (`node-version-file`), а не `lts/*` из примера в ADR-0003. Репозиторий — приватный `marketplace` на GitHub (бесплатных минут Actions на приватный репо хватает с запасом).
 

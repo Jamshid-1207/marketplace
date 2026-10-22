@@ -5,12 +5,19 @@
 
 ## [Unreleased] · Этап 1: каркас
 ### Added
+- **Шаг 3: локальная инфраструктура.**
+  - `compose.yaml`: postgres 16.15, kafka 4.3.2 (KRaft, три listener'а, явный heap), kafbat-ui v1.5.0, jaeger 2.22.0 (память, `max_traces: 50000`), mailpit v1.31.6. Инфраструктура в профилях `infra`/`core`/`full`, у каждого контейнера лимит памяти.
+  - `infra/postgres/provision.sh`: идемпотентно создаёт роли и базы по `services.txt` (7 сервисов из ADR-0004), выравнивает пароли по `.env`, делает `REVOKE CONNECT … FROM PUBLIC`.
+  - `infra/kafka/create-topics.sh`: создаёт топики из `topics.conf`, выравнивает retention у существующих, падает при расхождении числа партиций.
+  - `pnpm infra:up` / `infra:smoke` / `infra:down`, `.env.example`.
+  - CI job `infra-smoke`: два прогона подряд, оба зелёные. Это критерий 1: базы и владельцы, вход по паролю, чужая база недоступна, топики, UI.
 - **Шаг 2: GitHub и CI.** Приватный репозиторий `Jamshid-1207/marketplace`, ветка `main`. `.github/workflows/ci.yml`, job `check`: `format:check`, `nx sync:check`, `nx affected -t lint typecheck test build`. Node — из `.nvmrc`, pnpm — из `packageManager`. Права: `contents: read`, `actions: read` (без него `nx-set-shas` не находит базовый коммит). Остальные job'ы добавляются вместе со своими шагами.
 - **Шаг 1 (SD-01, п. 10): Nx-воркспейс.** pnpm 12 workspaces (`apps/*`, `libs/*`, `tools/*`) и TypeScript project references с условием экспорта `@repo/source`; inferred-таргеты `typecheck`, `build`, `lint`, `test` через плагины Nx; ESLint 10 flat config с границами модулей из ADR-0003, п. 4; Prettier; Jest 30 на `@swc/jest` с декораторами Nest; `.nvmrc`, `.editorconfig`, LF через `.gitattributes`. Проверено на временных libs (не закоммичены): `lint typecheck test build` зелёные, сборка даёт CommonJS, импорт node-lib из `platform:web`/`type:ui` валит lint.
 - `docs/system-design/01-skeleton.md`: дизайн этапа 1 (на согласовании) — compose `infra`, API libs, генератор сервиса, тесты, CI.
 ### Decided
 - PostgreSQL 16; деньги в TS/JSON — safe-integer `number`, в базе `bigint`; id — UUID v7 в колонках `uuid`; `libs/auth` переносится на этап 2; outbox relay на polling.
 ### Decided
+- SD-01, ревизия 4: декларация топиков — `topics.conf`, а не `topics.json` (в образе Kafka нечем разбирать JSON); запуск через `infra/up.sh`, потому что `up --wait` считает ошибкой завершившиеся одноразовые контейнеры.
 - SD-01 утверждён (ревизия 3). Версии на момент init: Nx 23.3, TypeScript 6.0 (7.x не поддерживает typescript-eslint), NestJS 12, Prisma 7.10 (8.x в rc), pnpm 12 через `npm i -g` вместо corepack.
 ### Changed (ревью SD-01, ревизия 2)
 - **Postgres:** init-скрипт заменён одноразовым идемпотентным `db-provision` по списку `infra/postgres/services.txt`: новый сервис (и `demo`) получает базу без пересоздания тома (SD-01, п. 5; ADR-0004, п. 1, 6).
