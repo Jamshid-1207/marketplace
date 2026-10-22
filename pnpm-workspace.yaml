@@ -1,0 +1,11 @@
+packages:
+  - 'apps/*'
+  - 'libs/*'
+  - 'tools/*'
+
+# pnpm 12 не запускает install-скрипты зависимостей без явного разрешения
+allowBuilds:
+  nx: false
+  '@swc/core': false
+  '@parcel/watcher': false
+  unrs-resolver: false

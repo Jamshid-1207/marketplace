@@ -1,6 +1,6 @@
 # System Design 01: Каркас (этап 1)
 
-**Статус:** 🟡 На согласовании · **Дата:** 2026-10-22 · **Ревизия:** 2
+**Статус:** ✅ Утверждено · **Дата:** 2026-10-22 · **Ревизия:** 3
 
 Этап 1 из ТЗ (раздел 8): монорепо, локальная инфраструктура, общие libs, шаблон сервиса, CI. Бизнес-логики на этом этапе нет: строим то, на чём будут стоять все 8 сервисов. Правила взяты из ADR-0001…0004, здесь только конкретика реализации.
 
@@ -31,10 +31,10 @@
 | Что                 | Версия                                                                                            |
 | ------------------- | ------------------------------------------------------------------------------------------------- |
 | Node.js             | 24 LTS (на машине уже 24.11), фиксируется в `.nvmrc` и `engines`; CI читает `.nvmrc`              |
-| pnpm                | через `corepack` (`packageManager` в `package.json`)                                              |
+| pnpm                | 12.x, `packageManager` в `package.json`. Ставится через `npm i -g pnpm@<версия>`: corepack 0.34 из Node 24 не запускает нативный бинарник pnpm 12, а с Node 25 corepack не входит в поставку |
 | Docker              | Docker Desktop + WSL2. Лимит WSL — 8 ГБ RAM в `%UserProfile%\.wslconfig` (из 16 ГБ машины)        |
-| Nx, NestJS, Prisma  | актуальные стабильные мажоры на момент init: NestJS 11, Prisma 7; точные версии — в lockfile      |
-| TypeScript          | strict, `module: nodenext`, сервисы и libs — CommonJS                                             |
+| Nx, NestJS, Prisma  | Nx 23.3 (24.0.0 вышел за день до init — ждём патчей), NestJS 12 (текущий стабильный), Prisma 7.10 (8.x пока rc); точные версии — в lockfile |
+| TypeScript          | 6.0: TypeScript 7 не поддерживается typescript-eslint (`<6.1`). Strict, `module: nodenext`, сервисы и libs — CommonJS |
 | Postgres / Kafka    | `postgres:16-alpine`, `apache/kafka:4.x` (тег фиксируется), `ghcr.io/kafbat/kafka-ui`, Jaeger v2  |
 
 Расхождение «PostgreSQL 15+» (ADR-0004) и «16» (ТЗ) закрываем: **16**.

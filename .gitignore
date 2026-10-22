@@ -1,0 +1,34 @@
+# compiled output
+dist
+tmp
+out-tsc
+test-output
+coverage
+
+# dependencies
+node_modules
+
+# Prisma client (ADR-0004, п. 4)
+apps/*/src/generated
+
+# env
+.env
+.env.*
+!.env.example
+
+# Nx
+.nx/cache
+.nx/workspace-data
+.nx/polygraph
+.nx/self-healing
+.nx/migrate-runs
+
+# IDE
+/.idea
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+
+# system
+.DS_Store
+Thumbs.db
