@@ -23,6 +23,9 @@
     },
     {
       "path": "./tools/generators"
+    },
+    {
+      "path": "./libs/auth"
     }
   ]
 }

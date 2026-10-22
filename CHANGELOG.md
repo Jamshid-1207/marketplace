@@ -5,6 +5,9 @@
 
 ## [Unreleased] · Этап 2: оформление без склада
 ### Added
+- **Шаг 1 (SD-02, п. 12).**
+  - Генератор: `--bare` — сервис без базы и Kafka (шаблоны данных вынесены в `files/data`); дефис в имени допустим только у bare-сервиса; порт хоста публикуется только по `--port` (ADR-0001, п. 1), `generator-smoke` передаёт `--port 3001`. Тестов генератора — 14. Обе разновидности проверены настоящей генерацией: lint, typecheck, test, build; bare-сервис отвечает `/health/ready` = 200.
+  - `libs/auth`: `JwtVerifier` (jose, удалённый JWKS с кэшем, EdDSA, `iss`/`aud`/`exp`, claims по схеме ADR-0006), глобальный `AuthGuard` и `@Public()`, `@CurrentClaims()`, `@BuyerScope()` → `AccessScope`, `DevTokenIssuer` для заглушки входа в gateway (до этапа 5). 11 тестов через настоящий HTTP JWKS: просрочка, чужой ключ, чужие `iss`/`aud` при верной подписи, подмена claims, `401`/`403`, игнор `X-User-Id`.
 - `docs/system-design/02-checkout-without-stock.md`: дизайн этапа 2 — gateway, order, payment, fake-psp, `libs/auth`, 12 сценариев готовности, машина состояний этапа 2, вызовы провайдера без потерь и дублей, один трейс на оформление, job `e2e`.
 ### Decided
 - SD-02 утверждён: корзина — на этапе 7 со storefront; ключи JWT до этапа 5 — по JWKS из gateway (эфемерный ключ); сбой payment между списанием у провайдера и записью результата проверяется интеграционным тестом без точек отказа в рабочем коде; тестовые пользователи и seed-каталог временно в `libs/contracts/src/dev/`.
