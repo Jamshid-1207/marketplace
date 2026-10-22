@@ -46,8 +46,9 @@ psql_as() {
     psql -h postgres -U "$user" -d "$db" -tAqc 'SELECT 1' 2>&1
 }
 [[ "$(psql_as order_svc "$ORDER_DB_PASSWORD" order_db)" == 1 ]] || fail 'order_svc не входит в order_db'
-psql_as order_svc "$ORDER_DB_PASSWORD" payment_db | grep -q 'permission denied' ||
-  fail 'order_svc подключился к payment_db'
+# psql здесь завершается с ошибкой — это и ожидается; вывод проверяем отдельно (pipefail)
+foreign="$(psql_as order_svc "$ORDER_DB_PASSWORD" payment_db || true)"
+[[ "$foreign" == *'permission denied for database'* ]] || fail "order_svc подключился к payment_db: $foreign"
 ok 'пароль сервиса работает, чужая база недоступна (REVOKE CONNECT)'
 
 # 4. Топики по topics.conf: существуют, число партиций совпадает
