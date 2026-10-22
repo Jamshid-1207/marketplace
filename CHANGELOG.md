@@ -5,6 +5,13 @@
 
 ## [Unreleased] · Этап 2: оформление без склада
 ### Added
+- **Шаг 3: `apps/fake-psp`** — заглушка провайдера (генератор `--bare`, порт 4000).
+  - Платёж в два шага: `requires_action` → `authorized` → `captured`, отмена `voided`, истечение неоплаченного `expired` (`PSP_PAYMENT_TTL_MS`, по умолчанию 30 мин). Отказ банка не завершает платёж.
+  - API `/v1/payments` (создание, списание, отмена — только с `Idempotency-Key`: повтор возвращает сохранённый ответ и ничего не выполняет, другой запрос с тем же ключом — `422`), страница оплаты `/pay/:id`.
+  - Webhook `payment.authorized` и `payment.expired` с подписью `X-PSP-Signature: t=…,v1=HMAC-SHA256`, повторы 1, 2, 4… до 60 с в течение `PSP_WEBHOOK_RETRY_FOR_MS`.
+  - Тестовое API (`PSP_TEST_API`): оплата, отказ и истечение без браузера, режим дублей webhook, счётчики фактических списаний и отмен.
+  - 24 теста: модель, доставка webhook, HTTP-поток целиком с настоящим получателем webhook.
+  - compose: `PSP_WEBHOOK_URL` через gateway, общий с payment `PSP_WEBHOOK_SECRET` в `.env.example`.
 - **Шаг 2: контракты оформления** (`libs/contracts`).
   - Команды `payment.commands` (ключ `orderId`, `aggregateType: order`): `CreatePayment`, `CapturePayment` (сразу с разбивкой по под-заказам и категориям для этапа 4), `CancelPayment`.
   - События `payment.*` (ключ `paymentId`, каждое несёт `orderId`): `created`, `authorized`, `failed`, `cancelled`, `captured`, `capture-failed`. События `order.*` (ключ `orderId`): `created`, `confirmed` (под-заказы целиком для наблюдателей), `cancelled`.

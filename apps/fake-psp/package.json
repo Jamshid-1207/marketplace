@@ -1,0 +1,66 @@
+{
+  "name": "@repo/fake-psp",
+  "version": "0.0.1",
+  "private": true,
+  "type": "commonjs",
+  "main": "./dist/main.js",
+  "files": [
+    "dist"
+  ],
+  "nx": {
+    "tags": [
+      "type:app",
+      "platform:node"
+    ],
+    "targets": {
+      "build": {
+        "executor": "nx:run-commands",
+        "options": {
+          "command": "tsc --build tsconfig.app.json",
+          "cwd": "{projectRoot}"
+        },
+        "dependsOn": [
+          "^build"
+        ],
+        "inputs": [
+          "production",
+          "^production"
+        ],
+        "outputs": [
+          "{projectRoot}/dist"
+        ],
+        "cache": true
+      },
+      "serve": {
+        "executor": "nx:run-commands",
+        "continuous": true,
+        "dependsOn": [
+          "build"
+        ],
+        "options": {
+          "command": "node --require ./dist/instrumentation.js dist/main.js",
+          "cwd": "{projectRoot}",
+          "env": {
+            "PORT": "4000",
+            "LOG_PRETTY": "true"
+          }
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "@nestjs/common": "12.2.0",
+    "@nestjs/core": "12.2.0",
+    "@nestjs/platform-express": "12.2.0",
+    "@repo/contracts": "workspace:*",
+    "@repo/observability": "workspace:*",
+    "nestjs-pino": "5.3.1",
+    "reflect-metadata": "0.2.2",
+    "rxjs": "7.8.2",
+    "tslib": "^2.8.1",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6"
+  }
+}

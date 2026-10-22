@@ -131,6 +131,42 @@ services:
       timeout: 3s
       retries: 20
     deploy: { resources: { limits: { memory: 64m } } }
+  fake-psp:
+    profiles:
+      - core
+      - full
+    build:
+      context: .
+      dockerfile: apps/fake-psp/Dockerfile
+      target: runtime
+    restart: unless-stopped
+    environment:
+      PORT: '3000'
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+      # браузер покупателя открывает страницу оплаты напрямую, мимо gateway (SD-02, п. 3)
+      PSP_PUBLIC_URL: http://localhost:4000
+      PSP_WEBHOOK_URL: http://gateway:3000/webhooks/psp
+      PSP_WEBHOOK_SECRET: ${PSP_WEBHOOK_SECRET:?задайте в .env}
+      PSP_TEST_API: 'true' # локальный стенд и e2e
+    ports:
+      - 4000:3000
+    healthcheck:
+      test:
+        - CMD
+        - wget
+        - -qO-
+        - http://localhost:3000/health/ready
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
+    depends_on:
+      jaeger:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 256m
 
 volumes:
   pgdata:

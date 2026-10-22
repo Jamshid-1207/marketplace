@@ -26,6 +26,9 @@
     },
     {
       "path": "./libs/auth"
+    },
+    {
+      "path": "./apps/fake-psp"
     }
   ]
 }
