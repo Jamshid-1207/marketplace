@@ -23,4 +23,6 @@ module.exports = {
     ],
   },
   moduleFileExtensions: ['ts', 'js'],
+  // интеграционные тесты — отдельный таргет test-integration: им нужен Docker
+  testPathIgnorePatterns: ['/node_modules/', '\.int-spec\.ts$'],
 };

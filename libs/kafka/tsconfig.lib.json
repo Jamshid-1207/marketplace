@@ -8,7 +8,7 @@
     "types": ["node"]
   },
   "include": ["src/**/*.ts"],
-  "exclude": ["src/**/*.spec.ts", "src/**/*.int-spec.ts"],
+  "exclude": ["src/**/*.spec.ts", "src/**/*.int-spec.ts", "src/testing/**"],
   "references": [
     {
       "path": "../observability/tsconfig.lib.json"

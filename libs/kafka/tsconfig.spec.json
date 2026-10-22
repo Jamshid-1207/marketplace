@@ -4,6 +4,10 @@
     "outDir": "./out-tsc/jest",
     "types": ["jest", "node"]
   },
-  "include": ["src/**/*.spec.ts", "src/**/*.d.ts"],
-  "references": [{ "path": "./tsconfig.lib.json" }]
+  "include": ["src/**/*.spec.ts", "src/**/*.int-spec.ts", "src/testing/**/*.ts", "src/**/*.d.ts"],
+  "references": [
+    {
+      "path": "./tsconfig.lib.json"
+    }
+  ]
 }

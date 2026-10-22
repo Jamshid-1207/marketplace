@@ -296,6 +296,12 @@ importers:
         specifier: ^2.8.1
         version: 2.8.1
     devDependencies:
+      '@opentelemetry/api':
+        specifier: 1.10.0
+        version: 1.10.0
+      '@opentelemetry/core':
+        specifier: 3.0.0
+        version: 3.0.0(@opentelemetry/api@1.10.0)
       '@repo/idempotency':
         specifier: workspace:*
         version: link:../idempotency

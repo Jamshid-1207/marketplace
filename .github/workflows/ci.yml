@@ -14,7 +14,7 @@ permissions:
   actions: read # nx-set-shas ищет последний успешный прогон
 
 jobs:
-  # SD-01, п. 9. Job'ы integration и generator-smoke добавляются со своими шагами
+  # SD-01, п. 9. Job generator-smoke добавляется вместе с генератором
   check:
     runs-on: ubuntu-latest
     steps:
@@ -31,6 +31,22 @@ jobs:
       - run: pnpm format:check
       - run: pnpm nx sync:check
       - run: pnpm nx affected -t lint typecheck test build
+
+  # Интеграционные тесты libs на Testcontainers: настоящие Postgres и Kafka (SD-01, п. 8)
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - uses: nrwl/nx-set-shas@v5
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm nx affected -t test-integration --output-style=static
 
   # Критерий 1 SD-01: инфраструктура поднимается, повторный up ничего не ломает
   infra-smoke:
