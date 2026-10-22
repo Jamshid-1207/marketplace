@@ -73,7 +73,10 @@ async function pendingPartitions(
   await admin.connect();
   try {
     const ends = await admin.fetchTopicOffsets(topic);
-    const [committed] = await admin.fetchOffsets({ groupId, topics: [topic] });
+    // для группы, которую брокер ещё не видел, первый запрос получает NOT_COORDINATOR
+    const [committed] = await retryRetriable(() =>
+      admin.fetchOffsets({ groupId, topics: [topic] }),
+    );
     const pending = new Map<number, bigint>();
     for (const { partition, offset: high, low } of ends) {
       const done = committed?.partitions.find((p) => p.partition === partition)?.offset ?? '-1';
@@ -83,5 +86,24 @@ async function pendingPartitions(
     return pending;
   } finally {
     await admin.disconnect();
+  }
+}
+
+/**
+ * Повтор для ошибок, которые kafkajs помечает как временные (`retriable`), но в admin-запросах
+ * сам не повторяет. Остальные ошибки — сразу наружу.
+ */
+export async function retryRetriable<T>(
+  fn: () => Promise<T>,
+  { attempts = 5, delayMs = 500 } = {},
+): Promise<T> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      const retriable = (error as { retriable?: boolean }).retriable === true;
+      if (!retriable || attempt >= attempts) throw error;
+      await new Promise((resolve) => setTimeout(resolve, delayMs * attempt));
+    }
   }
 }
