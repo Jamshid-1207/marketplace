@@ -5,6 +5,7 @@
 
 ## [Unreleased] · Этап 1: каркас
 ### Added
+- **Шаг 2: GitHub и CI.** Приватный репозиторий `Jamshid-1207/marketplace`, ветка `main`. `.github/workflows/ci.yml`, job `check`: `format:check`, `nx sync:check`, `nx affected -t lint typecheck test build`. Node — из `.nvmrc`, pnpm — из `packageManager`. Права: `contents: read`, `actions: read` (без него `nx-set-shas` не находит базовый коммит). Остальные job'ы добавляются вместе со своими шагами.
 - **Шаг 1 (SD-01, п. 10): Nx-воркспейс.** pnpm 12 workspaces (`apps/*`, `libs/*`, `tools/*`) и TypeScript project references с условием экспорта `@repo/source`; inferred-таргеты `typecheck`, `build`, `lint`, `test` через плагины Nx; ESLint 10 flat config с границами модулей из ADR-0003, п. 4; Prettier; Jest 30 на `@swc/jest` с декораторами Nest; `.nvmrc`, `.editorconfig`, LF через `.gitattributes`. Проверено на временных libs (не закоммичены): `lint typecheck test build` зелёные, сборка даёт CommonJS, импорт node-lib из `platform:web`/`type:ui` валит lint.
 - `docs/system-design/01-skeleton.md`: дизайн этапа 1 (на согласовании) — compose `infra`, API libs, генератор сервиса, тесты, CI.
 ### Decided
