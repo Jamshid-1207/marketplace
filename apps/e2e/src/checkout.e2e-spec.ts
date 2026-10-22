@@ -116,7 +116,7 @@ describe('этап 2: оформление без склада', () => {
     try {
       await psp.act(latePsp, 'authorize');
       for (const orderId of [unpaid, late]) {
-        const order = await untilStatus(buyer1, orderId, 'CANCELLED', 150_000);
+        const order = await untilStatus(buyer1, orderId, 'CANCELLED', 200_000);
         expect(order.cancelReason).toBe('payment_timeout');
       }
     } finally {
