@@ -188,7 +188,7 @@ describe('генератор сервиса', () => {
     it('package.json, Dockerfile и код без зависимостей от базы и Kafka', async () => {
       await serviceGenerator(tree, { name: 'fake-psp', bare: true });
       const pkg = readJson(tree, 'apps/fake-psp/package.json');
-      expect(Object.keys(pkg.dependencies)).not.toEqual(expect.arrayContaining(['@prisma/client']));
+      expect(pkg.dependencies['@prisma/client']).toBeUndefined();
       expect(pkg.dependencies['@repo/kafka']).toBeUndefined();
       expect(pkg.devDependencies).toBeUndefined();
       expect(pkg.nx.targets['prisma-generate']).toBeUndefined();
