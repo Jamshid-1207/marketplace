@@ -1,0 +1,32 @@
+{
+  "name": "@repo/outbox",
+  "version": "0.0.1",
+  "private": true,
+  "type": "commonjs",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "@repo/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "sql"
+  ],
+  "nx": {
+    "tags": [
+      "type:infra",
+      "platform:node"
+    ]
+  },
+  "dependencies": {
+    "@repo/contracts": "workspace:*",
+    "@repo/observability": "workspace:*",
+    "pg": "8.23.1",
+    "tslib": "^2.8.1"
+  }
+}

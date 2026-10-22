@@ -8,6 +8,15 @@
     },
     {
       "path": "./libs/observability"
+    },
+    {
+      "path": "./libs/idempotency"
+    },
+    {
+      "path": "./libs/outbox"
+    },
+    {
+      "path": "./libs/kafka"
     }
   ]
 }
