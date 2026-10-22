@@ -5,6 +5,15 @@
 
 ## [Unreleased] · Этап 2: оформление без склада
 ### Added
+- **Шаг 4: `apps/payment`** (полный шаблон генератора, SD-02, п. 6).
+  - Платёж: таблица `payments` (один на заказ, статус с CHECK, `correlation_id` и `trace_headers` оформления), статусы `CREATING` → `AWAITING_AUTHORIZATION` → `AUTHORIZED` → `CAPTURING` → `CAPTURED`, ветки `CAPTURE_FAILED`, `FAILED`, `CANCELLING` → `CANCELLED`. Решения по командам и webhook — чистые функции `domain/payment.ts`.
+  - Команды `CreatePayment`, `CapturePayment`, `CancelPayment` в три шага: транзакция 1 — промежуточный статус, вызов провайдера с `Idempotency-Key = <paymentId>:<операция>`, транзакция 2 — итог и событие в outbox. Повторная доставка после сбоя повторяет вызов с тем же ключом: провайдер не выполняет операцию второй раз. Повтор уже выполненной команды публикует итоговое событие ещё раз.
+  - `POST /webhooks/psp`: подпись HMAC с допуском 5 минут (иначе `401`), поиск по `merchantReference`, обработка в цепочке и трейсе оформления, `processed_events`; платёж ещё создаётся или база недоступна — `503`.
+  - Клиент провайдера на `fetch`: 5xx, 429, сеть и таймаут — временная ошибка, 4xx — окончательный отказ.
+  - Тесты: 41 unit (переходы, use case'ы на двойнике провайдера по HTTP, подпись, клиент), интеграционные на Testcontainers — полный поток через Kafka, сбой между списанием и транзакцией 2 (сценарий 4: одно списание), дубль webhook, webhook раньше `payment.created`, отмена.
+  - compose: `PSP_API_URL=http://fake-psp:3000`, общий `PSP_WEBHOOK_SECRET`.
+- `libs/observability`: инструментация `fetch` (undici) — вызовы провайдера в трейсе; `runInStoredTrace` — продолжить сохранённый трейс из webhook или планировщика, связав его ссылками с входящим спаном.
+- Генератор: `tsconfig.spec.json` включает `src/testing/**/*.ts` — помощники тестов сервиса.
 - **Шаг 3: `apps/fake-psp`** — заглушка провайдера (генератор `--bare`, порт 4000).
   - Платёж в два шага: `requires_action` → `authorized` → `captured`, отмена `voided`, истечение неоплаченного `expired` (`PSP_PAYMENT_TTL_MS`, по умолчанию 30 мин). Отказ банка не завершает платёж.
   - API `/v1/payments` (создание, списание, отмена — только с `Idempotency-Key`: повтор возвращает сохранённый ответ и ничего не выполняет, другой запрос с тем же ключом — `422`), страница оплаты `/pay/:id`.
@@ -24,6 +33,7 @@
   - `libs/auth`: `JwtVerifier` (jose, удалённый JWKS с кэшем, EdDSA, `iss`/`aud`/`exp`, claims по схеме ADR-0006), глобальный `AuthGuard` и `@Public()`, `@CurrentClaims()`, `@BuyerScope()` → `AccessScope`, `DevTokenIssuer` для заглушки входа в gateway (до этапа 5). 11 тестов через настоящий HTTP JWKS: просрочка, чужой ключ, чужие `iss`/`aud` при верной подписи, подмена claims, `401`/`403`, игнор `X-User-Id`.
 - `docs/system-design/02-checkout-without-stock.md`: дизайн этапа 2 — gateway, order, payment, fake-psp, `libs/auth`, 12 сценариев готовности, машина состояний этапа 2, вызовы провайдера без потерь и дублей, один трейс на оформление, job `e2e`.
 ### Decided
+- SD-02, ревизия 2 — уточнения payment по ходу реализации: отмена из `CAPTURE_FAILED` снимает авторизацию; отмена из `CREATING` повторяет создание тем же ключом и снимает платёж; webhook раньше `payment.created` — `503`; колонка `failure_reason`; id события провайдера в `processed_events` — UUID v8 из SHA-256.
 - SD-02 утверждён: корзина — на этапе 7 со storefront; ключи JWT до этапа 5 — по JWKS из gateway (эфемерный ключ); сбой payment между списанием у провайдера и записью результата проверяется интеграционным тестом без точек отказа в рабочем коде; тестовые пользователи и seed-каталог временно в `libs/contracts/src/dev/`.
 
 ## [0.2.0] - 2026-10-22 · Этап 1: каркас ✅

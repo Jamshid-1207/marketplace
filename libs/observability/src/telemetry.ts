@@ -3,6 +3,7 @@ import { ExpressInstrumentation } from '@opentelemetry/instrumentation-express';
 import { HttpInstrumentation } from '@opentelemetry/instrumentation-http';
 import { NestInstrumentation } from '@opentelemetry/instrumentation-nestjs-core';
 import { PgInstrumentation } from '@opentelemetry/instrumentation-pg';
+import { UndiciInstrumentation } from '@opentelemetry/instrumentation-undici';
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { register as registerEsmHooks } from 'import-in-the-middle/register-hooks.mjs';
 
@@ -38,6 +39,8 @@ export function initTelemetry(serviceName: string): NodeSDK {
       // 0.71 поддерживает Nest < 12: спанов контроллеров пока нет, есть HTTP и Express
       new NestInstrumentation(),
       new PgInstrumentation(),
+      // fetch встроен в Node (undici): вызовы внешних API, например провайдера платежей (SD-02, п. 7)
+      new UndiciInstrumentation(),
     ],
   });
   sdk.start();

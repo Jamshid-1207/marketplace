@@ -6,7 +6,12 @@ import {
   SimpleSpanProcessor,
   TracerProvider,
 } from '@opentelemetry/sdk-trace';
-import { currentTraceHeaders, currentTraceIds, runWithTraceHeaders } from './trace';
+import {
+  currentTraceHeaders,
+  currentTraceIds,
+  runInStoredTrace,
+  runWithTraceHeaders,
+} from './trace';
 
 describe('trace context', () => {
   const exporter = new InMemorySpanExporter();
@@ -58,5 +63,43 @@ describe('trace context', () => {
     const handler = exporter.getFinishedSpans().find((s) => s.name === 'handler');
     expect(handler?.spanContext().traceId).toBe(producerSpan.traceId);
     expect(handler?.parentSpanContext?.spanId).toBe(producerSpan.spanId);
+  });
+
+  it('сохранённый трейс: новый вход продолжает его, входящий спан связан ссылками', async () => {
+    let stored: Record<string, string> = {};
+    let checkout = { traceId: '', spanId: '' };
+    tracer().startActiveSpan('checkout', (span) => {
+      stored = currentTraceHeaders();
+      checkout = span.spanContext();
+      span.end();
+    });
+
+    let webhook = { traceId: '', spanId: '' };
+    await tracer().startActiveSpan('POST /webhooks/psp', async (span) => {
+      webhook = span.spanContext();
+      await runInStoredTrace(stored, 'psp-webhook', async () => {
+        tracer().startActiveSpan('db', (inner) => inner.end());
+      });
+      span.end();
+    });
+
+    const spans = exporter.getFinishedSpans();
+    const continued = spans.find((s) => s.name === 'psp-webhook');
+    const http = spans.find((s) => s.name === 'POST /webhooks/psp');
+    expect(continued?.spanContext().traceId).toBe(checkout.traceId);
+    expect(continued?.parentSpanContext?.spanId).toBe(checkout.spanId);
+    expect(continued?.links.map((l) => l.context.spanId)).toEqual([webhook.spanId]);
+    expect(http?.links.map((l) => l.context.spanId)).toEqual([continued?.spanContext().spanId]);
+    expect(spans.find((s) => s.name === 'db')?.spanContext().traceId).toBe(checkout.traceId);
+  });
+
+  it('сохранённый трейс: ошибка помечает спан и пробрасывается', async () => {
+    await expect(
+      runInStoredTrace({}, 'failing', async () => {
+        throw new Error('boom');
+      }),
+    ).rejects.toThrow('boom');
+    const span = exporter.getFinishedSpans().find((s) => s.name === 'failing');
+    expect(span?.status.code).toBe(2);
   });
 });

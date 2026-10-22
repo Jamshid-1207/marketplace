@@ -1,0 +1,39 @@
+import 'reflect-metadata';
+import { NestFactory } from '@nestjs/core';
+import { ConsumerRunner } from '@repo/kafka';
+import { Logger } from 'nestjs-pino';
+import { AppModule } from './app.module';
+import { loadConfig } from './config';
+
+async function serve(): Promise<void> {
+  const config = loadConfig();
+  // rawBody: подпись webhook провайдера считается от байтов тела (SD-02, п. 6.3)
+  const app = await NestFactory.create(AppModule.forRoot(config), {
+    bufferLogs: true,
+    rawBody: true,
+  });
+  app.useLogger(app.get(Logger));
+  app.enableShutdownHooks(); // SIGTERM: дослать outbox, остановить consumer, закрыть соединения
+  await app.listen(config.PORT);
+}
+
+/** `node dist/main.js dlq-reprocess` — повторная обработка DLQ после исправления (ADR-0002, п. 8). */
+async function dlqReprocess(): Promise<void> {
+  const app = await NestFactory.createApplicationContext(AppModule.forRoot(loadConfig(), 'cli'), {
+    bufferLogs: true,
+  });
+  const logger = app.get(Logger);
+  app.useLogger(logger);
+  try {
+    const result = await app.get(ConsumerRunner).reprocessDlq();
+    logger.log(`dlq-reprocess: обработано ${result.processed}, снова в DLQ ${result.failed}`);
+  } finally {
+    await app.close();
+  }
+}
+
+const command = process.argv[2] === 'dlq-reprocess' ? dlqReprocess : serve;
+command().catch((error: unknown) => {
+  console.error(error);
+  process.exit(1);
+});

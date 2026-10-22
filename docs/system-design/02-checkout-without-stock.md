@@ -1,6 +1,6 @@
 # System Design 02: Оформление без склада (этап 2)
 
-**Статус:** ✅ Утверждено · **Дата:** 2026-10-22 · **Ревизия:** 1
+**Статус:** ✅ Утверждено · **Дата:** 2026-10-22 · **Ревизия:** 2
 
 Этап 2 из ТЗ (раздел 8): gateway, order, payment, `fake-psp`. Первый сквозной сценарий — покупатель оформляет заказ у двух продавцов и платит. Склада ещё нет: шаги резерва saga пропускаются (ADR-0005, п. 10). Правила взяты из ADR-0001, 0002, 0005, 0006; здесь — что именно строим и как проверяем.
 
@@ -189,6 +189,7 @@ payments (payment_id uuid PK, order_id uuid UNIQUE,      -- один платё�
           amount_minor bigint, currency text,
           status text,                                    -- п. 6.2
           provider_payment_id text UNIQUE, payment_url text,
+          failure_reason text,                            -- для повторной публикации failed / capture-failed
           correlation_id text, trace_headers jsonb,       -- для webhook: продолжить цепочку и трейс оформления
           version int NOT NULL DEFAULT 0,                 -- aggregateVersion событий платежа
           created_at timestamptz, updated_at timestamptz)
@@ -215,18 +216,22 @@ stateDiagram-v2
   CAPTURING --> CAPTURE_FAILED: провайдер отказал
   AWAITING_AUTHORIZATION --> CANCELLING: CancelPayment
   AUTHORIZED --> CANCELLING: CancelPayment
+  CAPTURE_FAILED --> CANCELLING: CancelPayment
   CANCELLING --> CANCELLED: провайдер отменил
 ```
 
 | Команда / вход          | Допустимо из                         | Результат                                   | В остальных статусах                                   |
 | ----------------------- | ------------------------------------ | ------------------------------------------- | ------------------------------------------------------ |
-| `CreatePayment`         | нет строки, `CREATING`               | `payment.created`                           | повторно публикуется `payment.created`                 |
-| webhook `authorized`    | `AWAITING_AUTHORIZATION`             | `payment.authorized`                        | `CANCELLING`, `CANCELLED` — игнор: отмена снимет авторизацию; остальное — лог |
-| webhook `expired`       | `AWAITING_AUTHORIZATION`             | `payment.failed`                            | лог                                                    |
-| `CapturePayment`        | `AUTHORIZED`, `CAPTURING`            | `payment.captured` или `payment.capture-failed` | `CAPTURED` — повторно `payment.captured`; иначе лог и `alert` |
-| `CancelPayment`         | `CREATING`… `AUTHORIZED`, `CANCELLING` | `payment.cancelled`                       | `CANCELLED` — повторно `payment.cancelled`; `CAPTURED` — ошибка и `alert` (ADR-0005, п. 8) |
+| `CreatePayment`         | нет строки, `CREATING`               | `payment.created`                           | повторно публикуется `payment.created` (если страница оплаты уже есть) |
+| webhook `authorized`    | `AWAITING_AUTHORIZATION`             | `payment.authorized`                        | `CREATING` — `503`, провайдер повторит; остальное — пропуск в лог: после отмены авторизацию снимет `CancelPayment` |
+| webhook `expired`       | `AWAITING_AUTHORIZATION`             | `payment.failed` (`expired`)                | `CREATING` — `503`; остальное — пропуск в лог          |
+| `CapturePayment`        | `AUTHORIZED`, `CAPTURING`            | `payment.captured` или `payment.capture-failed` | `CAPTURED`, `CAPTURE_FAILED` — событие повторно; нет платежа — DLQ; иначе лог и `alert` |
+| `CancelPayment`         | `CREATING`… `AUTHORIZED`, `CAPTURE_FAILED`, `CANCELLING` | `payment.cancelled`     | `CANCELLED` — повторно `payment.cancelled`; `FAILED` — пропуск (провайдер ничего не держит); `CAPTURING`, `CAPTURED` — DLQ и `alert` (ADR-0005, п. 8) |
 
-- Временная ошибка провайдера (5xx, таймаут 5 с) — исключение: ретраи consumer runner, затем DLQ. Окончательный отказ (`4xx` по существу) — `payment.capture-failed`.
+- Временная ошибка провайдера (5xx, 429, таймаут 5 с) — исключение: ретраи consumer runner, затем DLQ. Окончательный отказ (`4xx` по существу) — `payment.capture-failed`; при создании — DLQ.
+- `CapturePayment` списывает ровно сумму платежа: сумма под-заказов не совпала — DLQ.
+- `CancelPayment` во время `CREATING` сначала повторяет создание с тем же ключом: так провайдер отдаёт уже созданный платёж, и его можно снять, а не оставить висеть.
+- Отказ провайдера в отмене (`4xx`: платёж уже истёк) — `CANCELLED` с предупреждением в лог: деньги не заблокированы.
 - Порядок команд одного заказа гарантирует ключ `orderId`: `CancelPayment` по дедлайну обрабатывается после `CreatePayment`, даже если тот ещё ретраится.
 
 ### 6.3 Webhook
@@ -234,8 +239,8 @@ stateDiagram-v2
 `POST /webhooks/psp`:
 1. Проверка подписи HMAC с допуском по времени 5 минут; неверная — `401`.
 2. Платёж ищется по `merchantReference = paymentId`, а не по id провайдера. Тот записывается только в транзакции 2, а покупатель может заплатить раньше.
-3. В контексте `correlationId` и `trace_headers` платежа (п. 7): одна транзакция с `idempotent(tx, 'psp-webhook', <id события провайдера>)`, переход по п. 6.2, outbox.
-4. Ответ `200`. Ошибка базы — `503`, провайдер повторит.
+3. В контексте `correlationId` и `trace_headers` платежа (п. 7): одна транзакция с `idempotent(tx, 'psp-webhook', <id события провайдера>)`, переход по п. 6.2, outbox. Id события провайдера (`evt_…`) не UUID, поэтому в `processed_events` пишется UUID v8 из его SHA-256.
+4. Ответ `200`. Ошибка базы или платёж ещё в `CREATING` — `503`, провайдер повторит. Отметка `processed_events` при этом не ставится.
 
 ## 7. Один трейс на оформление
 

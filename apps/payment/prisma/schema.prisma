@@ -1,0 +1,58 @@
+// Схема payment_db (ADR-0004). Таблицы outbox и processed_events принадлежат libs (SD-01, п. 6):
+// их DDL — в первой миграции, а модели здесь, чтобы prisma migrate dev не видел расхождений.
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Outbox {
+  id          BigInt    @id @default(autoincrement())
+  eventId     String    @unique @map("event_id") @db.Uuid
+  topic       String
+  messageKey  String    @map("message_key")
+  payload     Json
+  headers     Json      @default("{}")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  publishedAt DateTime? @map("published_at") @db.Timestamptz(6)
+
+  @@index([publishedAt, id], map: "outbox_unpublished")
+  @@map("outbox")
+}
+
+model ProcessedEvent {
+  handler     String
+  eventId     String   @map("event_id") @db.Uuid
+  processedAt DateTime @default(now()) @map("processed_at") @db.Timestamptz(6)
+
+  @@id([handler, eventId])
+  @@index([processedAt], map: "processed_events_processed_at")
+  @@map("processed_events")
+}
+
+/// Платёж заказа (SD-02, п. 6.1). Статус — текст с CHECK в миграции: см. domain/payment.ts.
+model Payment {
+  paymentId         String   @id @map("payment_id") @db.Uuid
+  /// один платёж на заказ (ADR-0005, п. 8)
+  orderId           String   @unique @map("order_id") @db.Uuid
+  amountMinor       BigInt   @map("amount_minor")
+  currency          String
+  status            String
+  providerPaymentId String?  @unique @map("provider_payment_id")
+  paymentUrl        String?  @map("payment_url")
+  failureReason     String?  @map("failure_reason")
+  /// цепочка и трейс оформления: в них обрабатывается webhook (SD-02, п. 7)
+  correlationId     String   @map("correlation_id")
+  traceHeaders      Json     @default("{}") @map("trace_headers")
+  /// номер последнего события платежа — aggregateVersion
+  version           Int      @default(0)
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("payments")
+}

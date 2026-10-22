@@ -4,6 +4,6 @@
     "outDir": "./out-tsc/jest",
     "types": ["jest", "node"]
   },
-  "include": ["src/**/*.spec.ts", "src/**/*.int-spec.ts"],
+  "include": ["src/**/*.spec.ts", "src/**/*.int-spec.ts", "src/testing/**/*.ts"],
   "references": [{ "path": "./tsconfig.app.json" }]
 }
