@@ -101,6 +101,13 @@ describe('JwtVerifier', () => {
     await expect(verifier.verify('nonsense')).rejects.toThrow();
   });
 
+  it('локальный JWKS: тот же результат без сетевого запроса', async () => {
+    const local = new JwtVerifier({ jwks: issuer.jwks() });
+    expect(await local.verify(await issuer.issue(buyer))).toEqual(buyer);
+    const other = await DevTokenIssuer.create();
+    await expect(local.verify(await other.issue(buyer))).rejects.toBeInstanceOf(InvalidTokenError);
+  });
+
   it('выпуск отклоняет claims, не соответствующие схеме', async () => {
     await expect(issuer.issue({ ...buyer, sub: 'not-a-uuid' })).rejects.toThrow();
   });

@@ -5,6 +5,14 @@
 
 ## [Unreleased] · Этап 2: оформление без склада
 ### Added
+- **Шаг 6: `apps/gateway`** (генератор `--bare --port 3000`, SD-02, п. 3.1).
+  - `/api/orders/**` → order (без префикса `/api`), `POST /webhooks/psp` → payment без JWT; тело — потоком, без разбора, поэтому подпись webhook сохраняется байт в байт. `X-Request-Id` и `traceparent` уходят в сервис.
+  - JWT на `/api/**` (глобальный `AuthGuard`), лимит `RATE_LIMIT_PER_MINUTE` (100) на пользователя, на анонима — на IP; `429` сверх лимита.
+  - Заглушка входа: эфемерный ключ Ed25519, `/.well-known/jwks.json`, `POST /dev/login { user }` при `DEV_AUTH=true` (в compose — по умолчанию).
+  - Сервис недоступен — `502`, таймаут — `504`.
+  - 11 тестов на настоящих HTTP-серверах вместо order и payment.
+- `libs/auth`: `JwtVerifier` и `AuthModule` принимают JWKS из памяти (`{ jwks }`) — gateway проверяет свои токены без запроса к себе.
+- Локальный `serve`: order на 3101, payment на 3102 — как ждёт gateway.
 - **Шаг 5: `apps/order`** (полный шаблон генератора, SD-02, п. 5).
   - Данные: `catalog_skus` (read-model каталога), `orders`, `order_lines` (снимок цены и названия), `sub_orders`, `checkout_sagas` (с `correlation_id` и `trace_headers`), `idempotency_keys`; CHECK на состояния.
   - Seed каталога из `libs/contracts/src/dev` (`dist/seed.js`, идемпотентный upsert) — в шаге `order-migrate` при `SEED_CATALOG=true`.
@@ -43,6 +51,7 @@
   - `libs/auth`: `JwtVerifier` (jose, удалённый JWKS с кэшем, EdDSA, `iss`/`aud`/`exp`, claims по схеме ADR-0006), глобальный `AuthGuard` и `@Public()`, `@CurrentClaims()`, `@BuyerScope()` → `AccessScope`, `DevTokenIssuer` для заглушки входа в gateway (до этапа 5). 11 тестов через настоящий HTTP JWKS: просрочка, чужой ключ, чужие `iss`/`aud` при верной подписи, подмена claims, `401`/`403`, игнор `X-User-Id`.
 - `docs/system-design/02-checkout-without-stock.md`: дизайн этапа 2 — gateway, order, payment, fake-psp, `libs/auth`, 12 сценариев готовности, машина состояний этапа 2, вызовы провайдера без потерь и дублей, один трейс на оформление, job `e2e`.
 ### Decided
+- SD-02, ревизия 4 — реализация gateway: прокси в обработчиках контроллера ради guard'ов, тело без разбора, `http-proxy-middleware` 3.x (4.x только ESM), webhook без лимита, ключи JWT из памяти до этапа 5.
 - SD-02, ревизия 3 — уточнения order: дедлайны в env с суффиксом `_MS`; seed — `src/seed.ts`, собранный с сервисом, а не `prisma/seed.ts`; `title` в `order_lines`; под-заказы `CANCELLED` при отмене заказа; планировщик — транзакция на каждую saga.
 - SD-02, ревизия 2 — уточнения payment по ходу реализации: отмена из `CAPTURE_FAILED` снимает авторизацию; отмена из `CREATING` повторяет создание тем же ключом и снимает платёж; webhook раньше `payment.created` — `503`; колонка `failure_reason`; id события провайдера в `processed_events` — UUID v8 из SHA-256.
 - SD-02 утверждён: корзина — на этапе 7 со storefront; ключи JWT до этапа 5 — по JWKS из gateway (эфемерный ключ); сбой payment между списанием у провайдера и записью результата проверяется интеграционным тестом без точек отказа в рабочем коде; тестовые пользователи и seed-каталог временно в `libs/contracts/src/dev/`.

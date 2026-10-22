@@ -35,6 +35,9 @@
     },
     {
       "path": "./apps/order"
+    },
+    {
+      "path": "./apps/gateway"
     }
   ]
 }

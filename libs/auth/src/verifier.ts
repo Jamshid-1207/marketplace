@@ -1,10 +1,17 @@
-import { createRemoteJWKSet, jwtVerify, type JWTVerifyGetKey } from 'jose';
+import {
+  createLocalJWKSet,
+  createRemoteJWKSet,
+  jwtVerify,
+  type JSONWebKeySet,
+  type JWTVerifyGetKey,
+} from 'jose';
 import { Claims, TOKEN_ALGORITHM, TOKEN_AUDIENCE, TOKEN_ISSUER } from './claims';
 
-export interface VerifierOptions {
+export type VerifierOptions =
   /** До этапа 5 — gateway (SD-02, п. 3.1), потом — auth. */
-  jwksUrl: string;
-}
+  | { jwksUrl: string }
+  /** Ключи уже в памяти: gateway проверяет токены своей заглушки входа без запроса к себе. */
+  | { jwks: JSONWebKeySet };
 
 export class InvalidTokenError extends Error {
   constructor(message: string, options?: { cause?: unknown }) {
@@ -21,12 +28,15 @@ export class InvalidTokenError extends Error {
 export class JwtVerifier {
   private readonly keys: JWTVerifyGetKey;
 
-  constructor({ jwksUrl }: VerifierOptions) {
-    this.keys = createRemoteJWKSet(new URL(jwksUrl), {
-      cooldownDuration: 30_000,
-      cacheMaxAge: 10 * 60_000,
-      timeoutDuration: 2_000, // таймаут синхронного вызова (ADR-0001, п. 3)
-    });
+  constructor(options: VerifierOptions) {
+    this.keys =
+      'jwks' in options
+        ? createLocalJWKSet(options.jwks)
+        : createRemoteJWKSet(new URL(options.jwksUrl), {
+            cooldownDuration: 30_000,
+            cacheMaxAge: 10 * 60_000,
+            timeoutDuration: 2_000, // таймаут синхронного вызова (ADR-0001, п. 3)
+          });
   }
 
   async verify(token: string): Promise<Claims> {

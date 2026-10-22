@@ -279,6 +279,41 @@ services:
       resources:
         limits:
           memory: 256m
+  gateway:
+    profiles:
+      - core
+      - full
+    build:
+      context: .
+      dockerfile: apps/gateway/Dockerfile
+      target: runtime
+    restart: unless-stopped
+    environment:
+      PORT: '3000'
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+      ORDER_URL: http://order:3000
+      PAYMENT_URL: http://payment:3000
+      # заглушка входа до этапа 5: сервиса auth ещё нет (SD-02, п. 3.1)
+      DEV_AUTH: ${DEV_AUTH:-true}
+    ports:
+      - 3000:3000
+    healthcheck:
+      test:
+        - CMD
+        - wget
+        - -qO-
+        - http://localhost:3000/health/ready
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
+    depends_on:
+      jaeger:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 256m
 
 volumes:
   pgdata:
