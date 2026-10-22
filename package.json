@@ -13,7 +13,10 @@
     "test": "nx run-many -t test",
     "build": "nx run-many -t build",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "infra:up": "bash infra/up.sh",
+    "infra:smoke": "bash infra/smoke.sh",
+    "infra:down": "docker compose --profile infra down"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.0",

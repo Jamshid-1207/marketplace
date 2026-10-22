@@ -38,11 +38,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - run: cp .env.example .env
-      - run: docker compose --profile infra up -d --wait --wait-timeout 300
+      - run: bash infra/up.sh
       - run: bash infra/smoke.sh
       - name: Повторный up (provisioning и топики идемпотентны)
         run: |
-          docker compose --profile infra up -d --wait --wait-timeout 300
+          bash infra/up.sh
           bash infra/smoke.sh
       - if: failure()
         run: docker compose --profile infra logs --no-color
