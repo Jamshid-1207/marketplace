@@ -1,0 +1,20 @@
+{
+  "eventId": "0192b4c6-0000-7000-8000-00000000e010",
+  "type": "order.created",
+  "version": 1,
+  "aggregateType": "order",
+  "aggregateId": "0192b4c6-0000-7000-8000-000000000d01",
+  "aggregateVersion": 1,
+  "occurredAt": "2026-10-22T10:00:00.000Z",
+  "correlationId": "req-checkout-1",
+  "causationId": "0192b4c6-0000-7000-8000-00000000e009",
+  "payload": {
+    "orderId": "0192b4c6-0000-7000-8000-000000000d01",
+    "buyerId": "0192b4c6-0000-7000-8000-000000000b01",
+    "total": {
+      "amountMinor": 368800000,
+      "currency": "UZS"
+    },
+    "sellerIds": ["0192b4c6-0000-7000-8000-00000000a000", "0192b4c6-0000-7000-8000-00000000b000"]
+  }
+}

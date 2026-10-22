@@ -24,6 +24,11 @@ export const MoneySchema = z.object({
 
 export type Money = z.infer<typeof MoneySchema>;
 
+/** Сумма платежа, позиции, заказа: строго больше нуля. */
+export const PositiveMoneySchema = MoneySchema.refine((m) => m.amountMinor > 0, {
+  message: 'сумма должна быть больше нуля',
+});
+
 export class MoneyError extends Error {
   constructor(message: string) {
     super(message);

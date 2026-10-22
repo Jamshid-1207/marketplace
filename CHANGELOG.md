@@ -5,6 +5,13 @@
 
 ## [Unreleased] · Этап 2: оформление без склада
 ### Added
+- **Шаг 2: контракты оформления** (`libs/contracts`).
+  - Команды `payment.commands` (ключ `orderId`, `aggregateType: order`): `CreatePayment`, `CapturePayment` (сразу с разбивкой по под-заказам и категориям для этапа 4), `CancelPayment`.
+  - События `payment.*` (ключ `paymentId`, каждое несёт `orderId`): `created`, `authorized`, `failed`, `cancelled`, `captured`, `capture-failed`. События `order.*` (ключ `orderId`): `created`, `confirmed` (под-заказы целиком для наблюдателей), `cancelled`.
+  - Общие схемы `CheckoutState`, `CancelReason`, `SubOrderStatus` — сразу со значениями этапа 3, чтобы не версионировать enum. `PositiveMoneySchema`.
+  - API order: `CreateOrderRequest` (без цен: они из каталога), `OrderView`, `OrderListResponse`.
+  - `dev/fixtures`: тестовые пользователи и seed-каталог двух продавцов до этапа 5.
+  - 12 контракт-фикстур; топики `order.events`, `payment.events`, `payment.commands` в `topics.conf`. Тестов contracts — 68.
 - **Шаг 1 (SD-02, п. 12).**
   - Генератор: `--bare` — сервис без базы и Kafka (шаблоны данных вынесены в `files/data`); дефис в имени допустим только у bare-сервиса; порт хоста публикуется только по `--port` (ADR-0001, п. 1), `generator-smoke` передаёт `--port 3001`. Тестов генератора — 14. Обе разновидности проверены настоящей генерацией: lint, typecheck, test, build; bare-сервис отвечает `/health/ready` = 200.
   - `libs/auth`: `JwtVerifier` (jose, удалённый JWKS с кэшем, EdDSA, `iss`/`aud`/`exp`, claims по схеме ADR-0006), глобальный `AuthGuard` и `@Public()`, `@CurrentClaims()`, `@BuyerScope()` → `AccessScope`, `DevTokenIssuer` для заглушки входа в gateway (до этапа 5). 11 тестов через настоящий HTTP JWKS: просрочка, чужой ключ, чужие `iss`/`aud` при верной подписи, подмена claims, `401`/`403`, игнор `X-User-Id`.

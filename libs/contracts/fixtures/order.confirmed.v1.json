@@ -1,0 +1,65 @@
+{
+  "eventId": "0192b4c6-0000-7000-8000-00000000e011",
+  "type": "order.confirmed",
+  "version": 1,
+  "aggregateType": "order",
+  "aggregateId": "0192b4c6-0000-7000-8000-000000000d01",
+  "aggregateVersion": 2,
+  "occurredAt": "2026-10-22T10:00:00.000Z",
+  "correlationId": "req-checkout-1",
+  "causationId": "0192b4c6-0000-7000-8000-00000000e010",
+  "payload": {
+    "orderId": "0192b4c6-0000-7000-8000-000000000d01",
+    "buyerId": "0192b4c6-0000-7000-8000-000000000b01",
+    "total": {
+      "amountMinor": 368800000,
+      "currency": "UZS"
+    },
+    "subOrders": [
+      {
+        "subOrderId": "0192b4c6-0000-7000-8000-000000005a01",
+        "sellerId": "0192b4c6-0000-7000-8000-00000000a000",
+        "amount": {
+          "amountMinor": 299000000,
+          "currency": "UZS"
+        },
+        "lines": [
+          {
+            "skuId": "0192b4c6-0000-7000-8000-00000000a101",
+            "qty": 1,
+            "unitPrice": {
+              "amountMinor": 299000000,
+              "currency": "UZS"
+            },
+            "categoryPath": [
+              "0192b4c6-0000-7000-8000-00000000c001",
+              "0192b4c6-0000-7000-8000-00000000c002"
+            ]
+          }
+        ]
+      },
+      {
+        "subOrderId": "0192b4c6-0000-7000-8000-000000005b01",
+        "sellerId": "0192b4c6-0000-7000-8000-00000000b000",
+        "amount": {
+          "amountMinor": 69800000,
+          "currency": "UZS"
+        },
+        "lines": [
+          {
+            "skuId": "0192b4c6-0000-7000-8000-00000000b101",
+            "qty": 2,
+            "unitPrice": {
+              "amountMinor": 34900000,
+              "currency": "UZS"
+            },
+            "categoryPath": [
+              "0192b4c6-0000-7000-8000-00000000c003",
+              "0192b4c6-0000-7000-8000-00000000c004"
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

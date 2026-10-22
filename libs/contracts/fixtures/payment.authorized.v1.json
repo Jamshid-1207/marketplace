@@ -1,0 +1,15 @@
+{
+  "eventId": "0192b4c6-0000-7000-8000-00000000e005",
+  "type": "payment.authorized",
+  "version": 1,
+  "aggregateType": "payment",
+  "aggregateId": "0192b4c6-0000-7000-8000-000000009a01",
+  "aggregateVersion": 2,
+  "occurredAt": "2026-10-22T10:00:00.000Z",
+  "correlationId": "req-checkout-1",
+  "causationId": "0192b4c6-0000-7000-8000-00000000e004",
+  "payload": {
+    "paymentId": "0192b4c6-0000-7000-8000-000000009a01",
+    "orderId": "0192b4c6-0000-7000-8000-000000000d01"
+  }
+}
