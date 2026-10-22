@@ -7,6 +7,7 @@ Pet-проект: multi-vendor B2C маркетплейс на микросер�
 ## Документация
 - [ТЗ](docs/TZ.md)
 - [System Design: обзор](docs/system-design/00-overview.md)
+- [System Design 01: каркас](docs/system-design/01-skeleton.md)
 - [ADR](docs/adr/): архитектурные решения
 - [CHANGELOG](CHANGELOG.md): журнал всех изменений
 
