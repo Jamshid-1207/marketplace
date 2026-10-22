@@ -3,6 +3,10 @@
 Все изменения проекта. Формат: [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/), версии по этапам.
 Типы: **Added**, **Changed**, **Fixed**, **Removed**, **Decided** (архитектурные решения).
 
+## [Unreleased] · Этап 2: оформление без склада
+### Added
+- `docs/system-design/02-checkout-without-stock.md`: дизайн этапа 2 (на согласовании) — gateway, order, payment, fake-psp, `libs/auth`, 12 сценариев готовности, машина состояний этапа 2, вызовы провайдера без потерь и дублей, один трейс на оформление, job `e2e`.
+
 ## [0.2.0] - 2026-10-22 · Этап 1: каркас ✅
 Критерии SD-01 выполнены, все четыре job'а CI зелёные: `check`, `integration`, `infra-smoke`, `generator-smoke`.
 

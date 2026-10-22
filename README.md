@@ -25,6 +25,7 @@ docker compose --profile core up -d --build     # инфраструктура �
 - [ТЗ](docs/TZ.md)
 - [System Design: обзор](docs/system-design/00-overview.md)
 - [System Design 01: каркас](docs/system-design/01-skeleton.md)
+- [System Design 02: оформление без склада](docs/system-design/02-checkout-without-stock.md)
 - [ADR](docs/adr/): архитектурные решения
 - [CHANGELOG](CHANGELOG.md): журнал всех изменений
 
