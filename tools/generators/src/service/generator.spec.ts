@@ -86,6 +86,19 @@ describe('генератор сервиса', () => {
     expect(read(tree, 'apps/demo/Dockerfile')).not.toContain('<%');
   });
 
+  it('tsconfig сервиса ссылается на libs, от которых он зависит', async () => {
+    await serviceGenerator(tree, { name: 'demo' });
+    const pkg = readJson(tree, 'apps/demo/package.json');
+    const workspaceDeps = Object.keys({ ...pkg.dependencies, ...pkg.devDependencies })
+      .filter((dep) => dep.startsWith('@repo/'))
+      .map((dep) => `../../libs/${dep.replace('@repo/', '')}/tsconfig.lib.json`)
+      .sort();
+    const references = readJson(tree, 'apps/demo/tsconfig.app.json').references.map(
+      (r: { path: string }) => r.path,
+    );
+    expect(references.sort()).toEqual(workspaceDeps);
+  });
+
   it('первая миграция — точная копия DDL из libs', async () => {
     await serviceGenerator(tree, { name: 'demo' });
     const migration = read(tree, INIT_MIGRATION('demo'));

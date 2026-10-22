@@ -16,6 +16,7 @@ done_step() { echo '::endgroup::'; }
 step 'генерация demo'
 pnpm nx g @repo/generators:service demo --no-interactive
 pnpm install --no-frozen-lockfile
+pnpm nx sync # шаблон уже содержит project references; sync должен ничего не менять
 done_step
 
 step 'lint typecheck test build'

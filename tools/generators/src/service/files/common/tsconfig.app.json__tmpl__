@@ -9,5 +9,13 @@
   },
   "include": ["src/**/*.ts"],
   "exclude": ["src/**/*.spec.ts", "src/**/*.int-spec.ts", "src/testing/**"],
-  "references": []
+  // project references на libs: то же, что проставил бы nx sync
+  "references": [
+    { "path": "../../libs/contracts/tsconfig.lib.json" },
+    { "path": "../../libs/idempotency/tsconfig.lib.json" },
+    { "path": "../../libs/kafka/tsconfig.lib.json" },
+    { "path": "../../libs/observability/tsconfig.lib.json" },
+    { "path": "../../libs/outbox/tsconfig.lib.json" },
+    { "path": "../../libs/testing/tsconfig.lib.json" }
+  ]
 }
