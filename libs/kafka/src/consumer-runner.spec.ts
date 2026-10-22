@@ -104,6 +104,22 @@ describe('ConsumerRunner.on', () => {
   });
 });
 
+describe('ConsumerRunner.start', () => {
+  it('без обработчиков не создаёт consumer', async () => {
+    const consumer = jest.fn();
+    const runner = new ConsumerRunner({
+      kafka: { consumer } as unknown as Kafka,
+      groupId: 'demo-service',
+      registry: new MessageRegistry([SmokePingedV1]),
+      dlq: new FakeDlq(),
+      logger,
+    });
+    await runner.start();
+    expect(consumer).not.toHaveBeenCalled();
+    await expect(runner.stop()).resolves.toBeUndefined();
+  });
+});
+
 describe('ConsumerRunner.handle', () => {
   it('вызывает обработчик с конвертом и контекстом цепочки: causationId = eventId', async () => {
     const { runner, dlq } = setup();

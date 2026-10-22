@@ -11,6 +11,11 @@
       "@repo/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./telemetry": {
+      "@repo/source": "./src/telemetry.ts",
+      "types": "./dist/telemetry.d.ts",
+      "default": "./dist/telemetry.js"
     }
   },
   "nx": {

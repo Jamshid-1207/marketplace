@@ -133,6 +133,5 @@ services:
 volumes:
   pgdata:
   kafkadata:
-# Сервисы подключает генератор строкой в include (glob не поддерживается):
-# include:
-#   - apps/<name>/compose.yaml
+# Сервисы приложения (<name>-migrate и <name>, профили core/full) дописывает в services
+# генератор сервиса: pnpm nx g @repo/generators:service <name>

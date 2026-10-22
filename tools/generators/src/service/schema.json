@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/schema",
+  "$id": "Service",
+  "title": "NestJS-сервис по шаблону",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Имя сервиса: латиница в нижнем регистре и цифры (order, payment). Из него строятся база, роль, топик DLQ и сервис в compose.",
+      "pattern": "^[a-z][a-z0-9]*$",
+      "$default": { "$source": "argv", "index": 0 },
+      "x-prompt": "Имя сервиса?"
+    },
+    "thin": {
+      "type": "boolean",
+      "description": "Тонкая схема слоёв (handlers/repositories/api) для проекций и notification (SD-00, п. 8).",
+      "default": false
+    },
+    "port": {
+      "type": "number",
+      "description": "Порт хоста в compose. По умолчанию — следующий свободный после 3000."
+    }
+  },
+  "required": ["name"]
+}

@@ -1,0 +1,87 @@
+{
+  "name": "@repo/<%= name %>",
+  "version": "0.0.1",
+  "private": true,
+  "type": "commonjs",
+  "main": "./dist/main.js",
+  "files": ["dist", "prisma", "prisma.config.ts"],
+  "nx": {
+    "tags": ["type:app", "platform:node"],
+    "targets": {
+      "prisma-generate": {
+        "executor": "nx:run-commands",
+        "options": { "command": "prisma generate", "cwd": "{projectRoot}" },
+        "inputs": ["{projectRoot}/prisma/**/*", "{projectRoot}/prisma.config.ts"],
+        "outputs": ["{projectRoot}/src/generated/prisma"],
+        "cache": true
+      },
+      "build": {
+        "executor": "nx:run-commands",
+        "options": { "command": "tsc --build tsconfig.app.json", "cwd": "{projectRoot}" },
+        "dependsOn": ["prisma-generate", "^build"],
+        "inputs": ["production", "^production"],
+        "outputs": ["{projectRoot}/dist"],
+        "cache": true
+      },
+      "typecheck": { "dependsOn": ["prisma-generate"] },
+      "test": { "dependsOn": ["prisma-generate"] },
+      "test-integration": {
+        "executor": "nx:run-commands",
+        "options": {
+          "command": "jest --config jest.int.config.cjs",
+          "cwd": "{projectRoot}",
+          "env": { "NODE_OPTIONS": "--experimental-vm-modules --disable-warning=ExperimentalWarning" }
+        },
+        "dependsOn": ["prisma-generate", "^build"],
+        "cache": false
+      },
+      "serve": {
+        "executor": "nx:run-commands",
+        "continuous": true,
+        "dependsOn": ["build"],
+        "options": {
+          "command": "node --require ./dist/instrumentation.js dist/main.js",
+          "cwd": "{projectRoot}",
+          "env": {
+            "PORT": "<%= port %>",
+            "DATABASE_URL": "postgresql://<%= name %>_svc:<%= name %>_local@localhost:5432/<%= name %>_db",
+            "KAFKA_BROKERS": "localhost:9092",
+            "LOG_PRETTY": "true"
+          }
+        }
+      },
+      "migrate": {
+        "executor": "nx:run-commands",
+        "options": {
+          "command": "prisma migrate dev",
+          "cwd": "{projectRoot}",
+          "env": {
+            "DATABASE_URL": "postgresql://<%= name %>_svc:<%= name %>_local@localhost:5432/<%= name %>_db",
+            "SHADOW_DATABASE_URL": "postgresql://<%= name %>_svc:<%= name %>_local@localhost:5432/<%= name %>_db_shadow"
+          }
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "@nestjs/common": "<%= versions.nest %>",
+    "@nestjs/core": "<%= versions.nest %>",
+    "@nestjs/platform-express": "<%= versions.nest %>",
+    "@prisma/adapter-pg": "<%= versions.prisma %>",
+    "@prisma/client": "<%= versions.prisma %>",
+    "@repo/contracts": "workspace:*",
+    "@repo/idempotency": "workspace:*",
+    "@repo/kafka": "workspace:*",
+    "@repo/observability": "workspace:*",
+    "@repo/outbox": "workspace:*",
+    "nestjs-pino": "<%= versions.nestjsPino %>",
+    "reflect-metadata": "<%= versions.reflectMetadata %>",
+    "rxjs": "<%= versions.rxjs %>",
+    "tslib": "^2.8.1",
+    "zod": "<%= versions.zod %>"
+  },
+  "devDependencies": {
+    "@repo/testing": "workspace:*",
+    "prisma": "<%= versions.prisma %>"
+  }
+}

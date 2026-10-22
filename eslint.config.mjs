@@ -23,6 +23,7 @@ export default [
             { sourceTag: 'type:infra', onlyDependOnLibsWithTags: ['type:contracts', 'type:infra'] },
             { sourceTag: 'type:ui', onlyDependOnLibsWithTags: ['type:contracts', 'type:ui'] },
             { sourceTag: 'type:contracts', onlyDependOnLibsWithTags: [] },
+            { sourceTag: 'type:tooling', onlyDependOnLibsWithTags: [] },
             {
               sourceTag: 'platform:web',
               onlyDependOnLibsWithTags: ['platform:web', 'platform:shared'],
@@ -31,6 +32,25 @@ export default [
               sourceTag: 'platform:node',
               onlyDependOnLibsWithTags: ['platform:node', 'platform:shared'],
             },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    // слой domain без фреймворков и инфраструктуры (SD-00, п. 8)
+    files: ['apps/*/src/domain/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            '@nestjs/*',
+            '@prisma/*',
+            'kafkajs',
+            '**/generated/**',
+            '**/infrastructure/**',
+            '**/interface/**',
           ],
         },
       ],

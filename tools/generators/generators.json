@@ -1,0 +1,9 @@
+{
+  "generators": {
+    "service": {
+      "factory": "./src/service/generator",
+      "schema": "./src/service/schema.json",
+      "description": "NestJS-сервис по шаблону SD-01, п. 7: Prisma, outbox и relay, consumer runner, наблюдаемость, Dockerfile, compose"
+    }
+  }
+}

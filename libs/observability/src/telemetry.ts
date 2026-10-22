@@ -13,7 +13,8 @@ import { register as registerEsmHooks } from 'import-in-the-middle/register-hook
 const ESM_INSTRUMENTED = ['@nestjs/core', 'express', 'pg', 'pg-pool'];
 
 /**
- * Запуск OpenTelemetry. Вызывается из `src/instrumentation.ts` сервиса, который грузится через
+ * Запуск OpenTelemetry. Импортируется отдельным подпутём `@repo/observability/telemetry`, чтобы
+ * не тянуть Nest раньше хуков. Вызывается из `src/instrumentation.ts` сервиса, который грузится через
  * `node --require`: SDK должен подменить модули до их импорта, а импорты в `main.ts`
  * выполняются раньше первой строки тела файла (SD-01, п. 6.2).
  *

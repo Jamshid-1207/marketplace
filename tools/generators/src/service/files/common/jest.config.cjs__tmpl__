@@ -1,0 +1,5 @@
+module.exports = {
+  displayName: '@repo/<%= name %>',
+  preset: '../../jest.preset.js',
+  coverageDirectory: 'test-output/jest/coverage',
+};

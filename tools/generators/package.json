@@ -1,0 +1,35 @@
+{
+  "name": "@repo/generators",
+  "version": "0.0.1",
+  "private": true,
+  "type": "commonjs",
+  "generators": "./generators.json",
+  "nx": {
+    "tags": [
+      "type:tooling",
+      "platform:node"
+    ],
+    "implicitDependencies": [
+      "@repo/contracts",
+      "@repo/observability",
+      "@repo/outbox",
+      "@repo/idempotency",
+      "@repo/kafka",
+      "@repo/testing"
+    ],
+    "targets": {
+      "smoke": {
+        "executor": "nx:run-commands",
+        "options": {
+          "command": "bash tools/generators/smoke.sh"
+        },
+        "cache": false
+      }
+    }
+  },
+  "dependencies": {
+    "@nx/devkit": "23.3.0",
+    "tslib": "^2.8.1",
+    "yaml": "2.9.1"
+  }
+}

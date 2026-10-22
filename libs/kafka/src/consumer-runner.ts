@@ -112,6 +112,11 @@ export class ConsumerRunner {
   async start(): Promise<void> {
     const { kafka, groupId, partitionsConsumedConcurrently, fromBeginning } = this.options;
     this.stopping = false;
+    // сервис без обработчиков (например, только публикует) не подписывается ни на что
+    if (this.handlers.size === 0) {
+      this.options.logger.info({ groupId }, 'обработчиков нет, consumer не запускается');
+      return;
+    }
     this.consumer = kafka.consumer({ groupId, allowAutoTopicCreation: false });
     await this.consumer.connect();
     await this.consumer.subscribe({ topics: this.topics, fromBeginning });
