@@ -55,11 +55,13 @@ done_step
 step 'трейсы доходят до Jaeger, логи несут traceId'
 # health-пробы не трейсятся, поэтому нужен обычный запрос; 404 тоже даёт спан HTTP
 curl -s -o /dev/null http://localhost:3001/smoke || true
+# API v3 — публичный API запросов Jaeger v2
+services() { curl -sS http://localhost:16686/api/v3/services; }
 for _ in $(seq 1 30); do
-  curl -fsS http://localhost:16686/api/services | grep -q '"demo"' && break
+  services | grep -q '"demo"' && break
   sleep 2
 done
-curl -fsS http://localhost:16686/api/services | grep -q '"demo"'
+services | grep -q '"demo"' || { echo "в Jaeger нет сервиса demo: $(services)" >&2; exit 1; }
 docker compose logs demo | grep -q '"traceId"'
 done_step
 
