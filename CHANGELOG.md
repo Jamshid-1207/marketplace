@@ -5,6 +5,16 @@
 
 ## [Unreleased] · Этап 1: каркас
 ### Added
+- **Шаг 6: шина.**
+  - `libs/idempotency`: `idempotent(tx, handler, eventId, fn)`, очистка `processed_events` порциями, каноническая DDL `sql/processed_events.sql`.
+  - `libs/outbox`: `outbox.add(tx, definition, payload, { aggregateId, aggregateVersion })` с `traceparent` в `headers`, каноническая DDL `sql/outbox.sql`.
+    - `OutboxRelay`: лидерство через advisory lock; публикация в порядке `id`; пометка только после отправки; backoff; потеря соединения означает переизбрание; очистка отправленных раз в час силами лидера; быстрый `stop()`.
+    - `PgRelayStore` работает на выделенном `pg.Client`.
+  - `libs/kafka`:
+    - `createKafka` (логи kafkajs идут через логгер сервиса) и `KafkaPublisher` (idempotent, `maxInFlightRequests: 1`, без автосоздания топиков) с `KafkaReadinessCheck`.
+    - `ConsumerRunner`: разбор и upcast через реестр, контекст цепочки (`causationId = eventId`) и `traceparent`. Ретраи по каждому обработчику отдельно, паузы кусками с heartbeat, перебалансировка или остановка — без DLQ. DLQ напрямую с заголовками ADR-0002; если DLQ недоступен, offset не коммитится.
+    - `reprocessDlq()`: читает DLQ до конца, запомненного при старте; повторная ошибка — обратно в DLQ с `x-attempts + 1`.
+  - Тесты: unit — idempotency 5, outbox 14, kafka 29. Интеграционные на Testcontainers — 9: порядок по агрегатам, единственный лидер, смена лидера после обрыва соединения, дубль после падения обработан один раз, ретраи, DLQ с заголовками, нет DLQ-топика — offset стоит, `dlq-reprocess`, сквозной `traceparent`. CI job `integration` прошёл два прогона подряд.
 - **Шаг 5: `libs/observability`** (`type:infra`, `platform:node`).
   - `ObservabilityModule.forRoot({ serviceName, readinessChecks, imports })`: логгер, контекст цепочки, health.
   - Контекст цепочки на `AsyncLocalStorage`: `runWithContext`, `runInNewChain`, `requireContext`. `CorrelationMiddleware` берёт `X-Request-Id` (небезопасный заменяет новым id) и возвращает его в ответе.

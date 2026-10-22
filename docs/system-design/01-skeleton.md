@@ -1,6 +1,6 @@
 # System Design 01: Каркас (этап 1)
 
-**Статус:** ✅ Утверждено · **Дата:** 2026-10-22 · **Ревизия:** 6
+**Статус:** ✅ Утверждено · **Дата:** 2026-10-22 · **Ревизия:** 7
 
 Этап 1 из ТЗ (раздел 8): монорепо, локальная инфраструктура, общие libs, шаблон сервиса, CI. Бизнес-логики на этом этапе нет: строим то, на чём будут стоять все 8 сервисов. Правила взяты из ADR-0001…0004, здесь только конкретика реализации.
 
@@ -169,7 +169,9 @@ await idempotent(tx, 'crm.ltv', envelope.eventId, async () => {
 
 ### 6.5 `libs/kafka`
 
-- **Producer-адаптер** поверх kafkajs. Использует его только инфраструктура: relay, отправка в DLQ и `dlq-reprocess`. Сервисы его напрямую не вызывают (ADR-0002, п. 2).
+- **Producer-адаптер** `KafkaPublisher` поверх kafkajs. Использует его только инфраструктура: relay, отправка в DLQ и `dlq-reprocess`. Сервисы его напрямую не вызывают (ADR-0002, п. 2).
+  - Relay зависит не от kafkajs, а от порта `OutboxPublisher` из `libs/outbox`. `KafkaPublisher` реализует этот порт, поэтому зависимость идёт в одну сторону: `kafka` → `outbox`.
+  - Партиционер — `DefaultPartitioner` (murmur2, как у Java-клиента).
 - **Consumer runner:**
   ```ts
   consumer.on(OrderConfirmedV1, 'crm.ltv', async (msg) => { … });   // обработчик сам открывает транзакцию и вызывает idempotent()
@@ -221,6 +223,7 @@ await idempotent(tx, 'crm.ltv', envelope.eventId, async () => {
 
 - Раннер — Jest с `@swc/jest`: быстрее, чем ts-jest, а типы и так проверяет отдельная задача `typecheck`. В конфиге swc включены `legacyDecorator` и `decoratorMetadata`, иначе DI Nest в тестах не работает.
 - Unit-тесты — таргет `test`, интеграционные — `test-integration` (файлы `*.int-spec.ts`), чтобы `test` работал без Docker.
+- Интеграционные тесты шины (outbox → Kafka → consumer → `processed_events`) живут в `libs/kafka`: это единственная lib, которая видит все три части. Postgres и Kafka поднимаются один раз на прогон (`globalSetup`); у каждого теста свои топики и группы. Kafka — `apache/kafka`, как в compose. Модуль Testcontainers для Kafka умеет только образы Confluent, поэтому контейнер настраивается через `GenericContainer`.
 - Порог покрытия 80% для `libs/contracts` и чистой логики `libs/kafka`/`outbox`. Это страховка, а не цель (SD-00, п. 9).
 
 ## 9. CI (`.github/workflows/ci.yml`)
