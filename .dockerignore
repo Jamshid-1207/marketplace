@@ -1,0 +1,16 @@
+# Контекст сборки образов сервисов (SD-01, п. 7): зависимости ставятся внутри образа по lockfile
+node_modules
+**/node_modules
+.git
+.nx
+.github
+dist
+**/dist
+**/out-tsc
+**/test-output
+coverage
+# клиент Prisma генерируется при сборке
+apps/*/src/generated
+.env
+.env.*
+!.env.example

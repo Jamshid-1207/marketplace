@@ -74,6 +74,11 @@ jobs:
   e2e:
     runs-on: ubuntu-latest
     steps:
+      # пять образов с node_modules не помещаются на диск раннера: убираем ненужные SDK (~25 ГБ)
+      - name: Место на диске
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
