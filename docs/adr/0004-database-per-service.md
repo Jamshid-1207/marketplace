@@ -1,6 +1,6 @@
 # ADR-0004: Database per service
 
-**Статус:** Принято · **Дата:** 2026-10-22 · **Ревизия:** 4
+**Статус:** Принято · **Дата:** 2026-10-22 · **Ревизия:** 5
 
 ## Контекст
 
@@ -43,7 +43,7 @@ ADR-0001 (п. 2) определяет, кто какими данными вла
 - Для разработки у каждого сервиса есть shadow-база `<service>_db_shadow` (п. 4).
 - Суперпользователь `postgres` используется только init-скриптом и для ручного администрирования, сервисы под ним не подключаются.
 
-Init-скрипт (`infra/postgres/init/`) выполняется образом Postgres **только при создании пустого тома**. После изменения скрипта том нужно пересоздать. В реальном скрипте (`.sh`) пароли берутся из env; ниже SQL для одного сервиса:
+Базы и пользователи создаёт одноразовый контейнер `db-provision` (`infra/postgres/provision.sh`) при каждом `docker compose up`. Он идемпотентен и приводит Postgres к списку `infra/postgres/services.txt`, поэтому новый сервис получает базу без пересоздания тома (init-скрипт образа выполняется только на пустом томе, SD-01, п. 5). Пароли берутся из env; ниже SQL для одного сервиса (в скрипте — с проверками существования):
 
 ```sql
 CREATE ROLE order_svc LOGIN PASSWORD '...';
@@ -156,8 +156,8 @@ ON CONFLICT (order_id) DO UPDATE
 
 - В Prisma 7 с адаптером `pg` пул по умолчанию — 10 соединений. У Postgres по умолчанию `max_connections = 100`. 7 сервисов × 10 = 70 уже при одном инстансе, при двух — 140, и Postgres начинает отказывать в подключениях.
 - Правило: `Σ (инстансы сервиса × размер пула) + запас на миграции и администрирование ≤ max_connections`.
-- Локально `DB_POOL_MAX=5` для каждого сервиса: 35 соединений при одном инстансе, 70 при двух.
-- Relay outbox работает в процессе сервиса и использует тот же пул.
+- Локально `DB_POOL_MAX=5` для каждого сервиса, плюс соединение relay: 42 соединения при одном инстансе, 84 при двух.
+- Relay outbox работает в процессе сервиса, но на **отдельном выделенном соединении**: session-level advisory lock через пул не удержать (SD-01, п. 6.3). Это +1 соединение на инстанс сверх пула.
 - При росте — PgBouncer. Миграции и relay (session-level advisory lock) подключаются к Postgres напрямую: transaction mode PgBouncer ломает advisory locks.
 
 ### 6. Миграции
@@ -168,12 +168,12 @@ ON CONFLICT (order_id) DO UPDATE
 
 ```yaml
 order-migrate:
-  build: { context: ., dockerfile: apps/order/Dockerfile, target: migrate } # стадия с Prisma CLI и prisma/
+  build: { context: ../.., dockerfile: apps/order/Dockerfile, target: migrate } # файл apps/order/compose.yaml, пути — от его папки
   command: prisma migrate deploy
   environment:
     DATABASE_URL: postgresql://order_svc:${ORDER_DB_PASSWORD}@postgres:5432/order_db
   depends_on:
-    postgres: { condition: service_healthy }
+    db-provision: { condition: service_completed_successfully }
   profiles: ["core", "full"]
 
 order:

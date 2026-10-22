@@ -8,6 +8,23 @@
 - `docs/system-design/01-skeleton.md`: дизайн этапа 1 (на согласовании) — compose `infra`, API libs, генератор сервиса, тесты, CI.
 ### Decided
 - PostgreSQL 16; деньги в TS/JSON — safe-integer `number`, в базе `bigint`; id — UUID v7 в колонках `uuid`; `libs/auth` переносится на этап 2; outbox relay на polling.
+### Changed (ревью SD-01, ревизия 2)
+- **Postgres:** init-скрипт заменён одноразовым идемпотентным `db-provision` по списку `infra/postgres/services.txt`: новый сервис (и `demo`) получает базу без пересоздания тома (SD-01, п. 5; ADR-0004, п. 1, 6).
+- **Relay outbox** работает на выделенном `pg.Client`: session-level advisory lock нельзя удержать через пул; +1 соединение на инстанс в бюджете (SD-01, п. 6.3; ADR-0004, п. 5).
+- **`outbox.headers jsonb`** для `traceparent`; индекс `(published_at, id)` вместо частичного, которого не выражает Prisma-схема (ADR-0002, п. 6).
+- **`outbox.add()`** принимает `aggregateId` и `aggregateVersion` явно; реестр сообщений знает `aggregateType`.
+- **Каноническая DDL** `outbox`/`processed_events` в `libs/*/sql/`; генератор копирует её в миграцию, тест сверяет.
+- ADR-0001: исключение из правила «lib — по факту» для технических libs этапа 1.
+### Fixed (ревью SD-01)
+- **Compose:** `include` не поддерживает glob — строку дописывает генератор; `build.context: ../..` во включённых файлах; инфраструктура в профилях `infra`/`core`/`full`, иначе `--profile core` не поднимает Postgres.
+- **DLQ-топики** декларируются (автосоздание выключено, иначе партиция встаёт навсегда); в DLQ пишет producer напрямую, мимо outbox (ADR-0002, п. 8).
+- **Перебалансировка во время ретраев** прерывает ретраи без отправки в DLQ.
+- **`mulBp`** считает через `BigInt`: `amount × bp` переполнял safe integer на суммах от ~9·10¹¹ тийинов.
+- **OpenTelemetry** грузится через `--require instrumentation.js`: вызов в первой строке `main.ts` срабатывает после импортов.
+- Консумер валидирует payload схемой его версии до upcast; ретраи и DLQ — по каждому обработчику отдельно.
+- `dlq-reprocess`: отдельный application context, чтение до запомненного конца, повторная ошибка → обратно в DLQ с `x-attempts + 1`.
+- Kafka: listener `CONTROLLER`, явный heap; `kafka-init` выравнивает retention; служебный топик `smoke.events` без `_`. Jaeger с `max_traces`.
+- CI: Node из `.nvmrc`; `generator-smoke` через affected-таргет; CI настраивается вторым шагом, а не в конце.
 
 ## [0.1.0] - 2026-10-22 · Этап 0: ТЗ утверждено
 ### Changed
