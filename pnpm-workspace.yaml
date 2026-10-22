@@ -12,3 +12,5 @@ allowBuilds:
   protobufjs: false # postinstall только проверяет версию
   ssh2: false # нативное ускорение не нужно: Testcontainers ходит в Docker через сокет
   cpu-features: false
+  '@prisma/engines': true # скачивает движок миграций Prisma
+  prisma: true # preinstall проверяет версию Node
