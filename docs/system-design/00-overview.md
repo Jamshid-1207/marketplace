@@ -1,106 +1,285 @@
 # System Design 00: Общая архитектура
 
-**Статус:** 🟡 Черновик
+**Статус:** Актуально · **Дата:** 2026-10-22 · **Ревизия:** 4
+
+Документ — карта системы: схемы и связи. Требования — в ТЗ, правила и детали — в ADR. Если документ и ADR расходятся, прав ADR, а документ исправляется.
+
+| Документ | О чём                                                                  |
+| -------- | ---------------------------------------------------------------------- |
+| ТЗ       | Требования, MVP, этапы                                                 |
+| ADR-0001 | Микросервисы поэтапно, владение данными, взаимодействие, наблюдаемость |
+| ADR-0002 | Kafka: топики, ключи, конверт, outbox, идемпотентность, DLQ, replay    |
+| ADR-0003 | Nx monorepo, контракты, границы модулей                                |
+| ADR-0004 | Database per service, read-models, Prisma, миграции                    |
+| ADR-0005 | Checkout saga, жизнь под-заказа                                        |
+| ADR-0006 | Изоляция продавцов, роли и права                                       |
+| ADR-0007 | Деньги: журнал проводок, комиссия, удержание, выплаты                  |
 
 ## 1. Контекст (C4 L1)
+
+Система — один блок, вокруг неё люди и внешние системы. Это multi-vendor маркетплейс: продавцы хранят товар на своих складах и сами его отгружают (FBS).
+
 ```mermaid
 flowchart LR
-  Buyer([Покупатель]) --> SF[Storefront<br/>Next.js]
-  Seller([Продавец / Менеджер]) --> BO[Backoffice<br/>Next.js]
-  Admin([Админ]) --> BO
-  SF --> GW[API Gateway]
-  BO --> GW
-  GW --> Platform[[Marketplace Platform]]
-  Platform --> Mail[(Email / Telegram)]
+  Buyer(["Покупатель"])
+  Seller(["Продавец и его сотрудники"])
+  Admin(["Админ платформы"])
+  MP[["Маркетплейс"]]
+  PSP["Платёжный провайдер"]
+  Mail["Email"]
+  TG["Telegram, после MVP"]
+
+  Buyer -->|"выбирает товары, оформляет заказ"| MP
+  Buyer -->|"платит на странице провайдера"| PSP
+  Seller -->|"товары, склады, заказы, финансы"| MP
+  Admin -->|"модерация, категории, комиссия"| MP
+  MP -->|"авторизация, списание, возврат, выплата"| PSP
+  PSP -->|"webhook с результатом"| MP
+  PSP -->|"выплата на счёт"| Seller
+  MP -->|"уведомления"| Mail
+  MP -.->|"уведомления"| TG
 ```
 
 ## 2. Контейнеры (C4 L2)
+
 ```mermaid
 flowchart TB
-  GW[api-gateway]
-  subgraph Services
-    AUTH[auth]
-    CAT[catalog]
-    ORD[order<br/>Saga orchestrator]
-    PAY[payment]
-    ERP[erp]
-    CRM[crm]
-    NOTIF[notification]
+  SF["storefront<br/>Next.js"]
+  BO["backoffice<br/>Next.js: кабинет продавца и админка"]
+  PSP["Платёжный провайдер<br/>локально: fake-psp"]
+  GW["gateway<br/>JWT, rate limit, X-Request-Id"]
+
+  subgraph services["Сервисы, NestJS"]
+    AUTH["auth"]
+    CAT["catalog<br/>продавцы, товары"]
+    ORD["order<br/>оркестратор saga"]
+    PAY["payment<br/>платежи и проводки"]
+    ERP["erp<br/>склады продавцов"]
+    CRM["crm"]
+    NOTIF["notification"]
   end
-  K{{Kafka}}
-  R[(Redis)]
-  GW -->|REST| AUTH & CAT & ORD & ERP & CRM
-  CAT --- R
-  ORD --- R
-  AUTH & CAT & ORD & PAY & ERP & CRM & NOTIF <-->|events| K
-  AUTH --- DB1[(auth_db)]
-  CAT --- DB2[(catalog_db)]
-  ORD --- DB3[(order_db)]
-  PAY --- DB4[(payment_db)]
-  ERP --- DB5[(erp_db)]
-  CRM --- DB6[(crm_db)]
-  NOTIF --- DB7[(notif_db)]
+
+  K{{"Kafka"}}
+  PG[("PostgreSQL<br/>база на сервис")]
+  J["Jaeger"]
+  MAIL["Mailpit"]
+
+  SF -->|REST| GW
+  BO -->|REST| GW
+  PSP -->|webhook| GW
+  GW -->|REST| AUTH
+  GW -->|REST| CAT
+  GW -->|REST| ORD
+  GW -->|REST| PAY
+  GW -->|REST| ERP
+  GW -->|REST| CRM
+  PAY -->|"авторизация, списание, возврат, выплата"| PSP
+  services <-->|"события и команды"| K
+  services --> PG
+  services -.->|трейсы| J
+  NOTIF --> MAIL
 ```
 
-## 3. Checkout Saga (happy path + компенсации)
+- Наружу открыт только gateway: фронты и webhook провайдера ходят через него (ADR-0001, п. 1).
+- Каждый сервис сам проверяет JWT через `libs/auth` и не доверяет заголовкам с идентичностью (ADR-0006, п. 4).
+- Один инстанс Postgres; у каждого сервиса своя база и пользователь: `auth_db`, `catalog_db`, `order_db`, `payment_db`, `erp_db`, `crm_db`, `notification_db`. У gateway базы нет (ADR-0004).
+- Кто что публикует и читает — раздел 3. Стрелка к Kafka на схеме показывает только, что все сервисы работают через неё.
+- Redis нет: корзина хранится в `order_db`. Redis понадобится, только если gateway станет несколько инстансов и rate limit нужно будет делить между ними.
+- Kafbat UI — инструмент отладки (ADR-0002, п. 10), на схеме не показан.
+
+## 3. Каталог сообщений
+
+Источник истины — схемы в `libs/contracts` (ADR-0003). Таблицы ниже — обзор; они обновляются в одном коммите с контрактами.
+
+- Команда идёт в топик получателя, событие — в топик владельца (ADR-0005, п. 3).
+- Наблюдатели слушают итоговые события заказа и под-заказа, а не промежуточные шаги saga (ADR-0005, п. 2).
+
+**Команды** — только у оркестратора (order):
+
+| Команда                                                             | Топик              | Ключ      | Выполняет |
+| ------------------------------------------------------------------- | ------------------ | --------- | --------- |
+| `ReserveStock`, `CommitStock`, `ReleaseStock`                       | `erp.commands`     | `orderId` | erp       |
+| `CreatePayment`, `CancelPayment`, `CapturePayment`, `RefundPayment` | `payment.commands` | `orderId` | payment   |
+
+**События:**
+
+| Событие                                                                                                                      | Топик            | Ключ        | Публикует | Читают                                                                                    |
+| ---------------------------------------------------------------------------------------------------------------------------- | ---------------- | ----------- | --------- | ----------------------------------------------------------------------------------------- |
+| `user.*` (например, `user.registered`)                                                                                       | `auth.events`    | `userId`    | auth      | crm — профиль клиента; notification — контакты                                            |
+| `seller.registered`, `seller.approved`, `seller.rejected`, `seller.blocked`                                                  | `catalog.events` | `sellerId`  | catalog   | auth — членство и права; notification                                                     |
+| `product.*`                                                                                                                  | `catalog.events` | `productId` | catalog   | order — read-model товаров и цен                                                          |
+| `order.created`                                                                                                              | `order.events`   | `orderId`   | order     | crm — таймлайн                                                                            |
+| `category.*`                                                                                                                 | `catalog.events` | `categoryId` | catalog  | payment — проверка ставок комиссии (ADR-0007, п. 4)                                       |
+| `order.confirmed`                                                                                                            | `order.events`   | `orderId`   | order     | erp — реестр продаж; crm — LTV, сегменты, таймлайн; notification — покупателю и продавцам |
+| `order.cancelled`                                                                                                            | `order.events`   | `orderId`   | order     | crm — таймлайн; notification                                                              |
+| `sub-order.shipped`                                                                                                          | `order.events`   | `orderId`   | order     | erp — списание остатка; notification                                                      |
+| `sub-order.delivered`                                                                                                        | `order.events`   | `orderId`   | order     | payment — удержание; crm — таймлайн; notification                                         |
+| `sub-order.cancelled`                                                                                                        | `order.events`   | `orderId`   | order     | erp — сторно продажи; crm — пересчёт LTV; notification                                    |
+| `stock.reserved`, `stock.rejected`, `stock.committed`, `stock.commit-failed`, `stock.released`                               | `erp.events`     | `orderId`   | erp       | order — ответы saga                                                                       |
+| `stock.level-changed`                                                                                                        | `erp.events`     | `skuId`     | erp       | catalog — наличие на витрине                                                              |
+| `stock.low`                                                                                                                  | `erp.events`     | `skuId`     | erp       | notification — продавцу                                                                   |
+| `payment.created`, `payment.authorized`, `payment.failed`, `payment.cancelled`, `payment.captured`, `payment.capture-failed` | `payment.events` | `paymentId` | payment   | order — ответы saga                                                                       |
+| `payment.refunded`                                                                                                           | `payment.events` | `paymentId` | payment   | order — результат компенсации; notification — письмо о возврате                           |
+| `payout.paid`, `payout.failed`                                                                                               | `payment.events` | `payoutId`  | payment   | notification — продавцу                                                                   |
+
+Топики: `auth.events`, `catalog.events`, `order.events`, `payment.events`, `erp.events`, `erp.commands`, `payment.commands`. DLQ — по одному на consumer group: `<consumer-group>.dlq`. Партиции и сроки хранения — ADR-0002, п. 3.
+
+У crm и notification нет своих топиков событий: пока их события никому не нужны.
+
+## 4. Checkout saga
+
+Оркестратор — order. Один заказ — одна оплата и N под-заказов, по одному на продавца. Оплата в два шага: сначала деньги покупателя блокируются (авторизация), а списываются только после того, как товар закреплён за заказом. Подробно — ADR-0005.
+
 ```mermaid
 sequenceDiagram
-  participant O as order (orchestrator)
+  participant O as order (оркестратор)
   participant E as erp
   participant P as payment
-  participant C as crm
-  O->>E: order.created
-  E-->>O: stock.reserved
-  E-->>C: (stock.reserved → timeline)
-  O->>P: payment.requested
-  alt оплата прошла
-    P-->>O: payment.succeeded
-    P-->>E: payment.succeeded → продажа, счёт, баланс
-    P-->>C: payment.succeeded → LTV, сегмент
-    O->>O: confirmed
-  else отказ / таймаут
-    P-->>O: payment.failed
-    O->>E: stock.release (компенсация)
-    O->>O: cancelled
+  O->>E: ReserveStock (все продавцы заказа)
+  alt товар есть у всех
+    E-->>O: stock.reserved
+    O->>P: CreatePayment
+    P-->>O: payment.created, ссылка на оплату
+    Note over P: покупатель платит, деньги заблокированы
+    alt авторизация прошла
+      P-->>O: payment.authorized
+      O->>E: CommitStock
+      E-->>O: stock.committed
+      O->>P: CapturePayment (разбивка по продавцам)
+      P-->>O: payment.captured
+      O->>O: CONFIRMED, публикует order.confirmed
+    else отказ или дедлайн оплаты
+      O->>P: CancelPayment
+      O->>E: ReleaseStock
+      O->>O: CANCELLED, публикует order.cancelled
+    end
+  else не хватает товара
+    E-->>O: stock.rejected
+    O->>O: CANCELLED, публикует order.cancelled
   end
 ```
 
-## 4. Надёжная публикация событий
+- **Точка невозврата — `payment.captured`.** До неё любая отмена снимает резерв и авторизацию, деньги не двигаются. После неё отменить можно только отдельный под-заказ, с возвратом денег.
+- **Поздние сообщения:** `payment.authorized` после отмены → `CancelPayment`; `stock.reserved` после отмены → `ReleaseStock`.
+- **Дедлайны:** ответ erp — 30 с, оплата — 15 мин. Незакреплённый резерв в erp снимается сам через 30 мин, даже если order упал.
+- **Под-заказ после подтверждения:** `CONFIRMED → SHIPPED → DELIVERED`; отгрузку и доставку отмечает продавец. Отмена до отгрузки — покупателем или продавцом: `ReleaseStock` и `RefundPayment` только для этого под-заказа.
+- **Этапы** (ТЗ, раздел 8): на этапе 2 saga работает без склада, на этапе 3 — полностью.
+
+## 5. Деньги
+
+Все деньги — в payment, в журнале проводок по двойной записи (ADR-0007). `S` — сумма под-заказа, `C` — комиссия площадки по ставке категории.
+
 ```mermaid
 flowchart LR
-  UC[Use case] -->|1 транзакция| T[(business tables + outbox)]
-  Relay[Outbox relay<br/>poll / CDC] --> T
-  Relay -->|publish| K{{Kafka}}
-  K --> Cons[Consumer]
-  Cons -->|check processed_events| DB[(service db)]
+  CAP["Списание денег покупателя<br/>CapturePayment"] -->|"S − C"| PEND["Продавец: в ожидании"]
+  CAP -->|"C"| DEF["Комиссия: отложена"]
+  PEND -->|"доставка и срок удержания"| AV["Продавец: доступно"]
+  DEF -->|"доставка и срок удержания"| REV["Комиссия: заработана"]
+  PEND -->|"отмена до отгрузки"| REF["Возврат покупателю"]
+  DEF -->|"отмена до отгрузки"| REF
+  AV -->|"запрос выплаты"| OUT["Выплата продавцу"]
 ```
-- **Outbox:** нет «двойной записи». Если упадём между commit в БД и publish в Kafka, событие не потеряется.
-- **Idempotency:** `processed_events(event_id PK)`, повторная доставка игнорируется.
-- **Ключ партиции:** `aggregateId` (orderId, sku), чтобы события одного агрегата шли по порядку.
 
-## 5. Конверт события (libs/contracts)
-```ts
-interface EventEnvelope<T> {
-  eventId: string;        // uuid v7
-  type: string;           // 'order.created'
-  version: number;        // schema version
-  occurredAt: string;     // ISO
-  aggregateId: string;
-  correlationId: string;
-  payload: T;
+- Суммы — целые тийины, `bigint`.
+- Проводки неизменяемы; сумма записей каждой проводки равна нулю — это проверяет база.
+- Повтор операции не удваивает деньги: одна проводка на операцию. Двойная выплата невозможна: запрос блокирует строку баланса.
+
+## 6. Изоляция продавцов
+
+Подробно — ADR-0006.
+
+- Все продавцы в общих таблицах; у каждой таблицы с данными продавца есть `seller_id NOT NULL`.
+- Каждый метод репозитория принимает область доступа (`buyer`, `seller`, `platform`), которая строится только из проверенного токена.
+- Чужой ресурс — `404`; ресурс без нужного права сотрудника — `403`.
+- Для каждого эндпоинта кабинета есть автотест изоляции с двумя продавцами.
+- На этапе hardening добавляется Row-Level Security в Postgres как вторая линия защиты.
+
+## 7. Надёжная доставка сообщений
+
+```mermaid
+flowchart LR
+  UC["Use case"] -->|"одна транзакция"| T[("таблицы домена + outbox")]
+  R["Outbox relay, polling"] -->|"читает по порядку id"| T
+  R -->|публикует| K{{"Kafka"}}
+  K --> H["Обработчик"]
+  H -->|"одна транзакция: processed_events + изменения"| DB[("база сервиса")]
+  H -.->|"ошибка после ретраев"| DLQ{{"consumer-group.dlq"}}
+```
+
+| Механизм                               | Что гарантирует                                                                                            | Подробно                                 |
+| -------------------------------------- | ---------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
+| Outbox                                 | Изменение и сообщение о нём сохраняются атомарно: падение между коммитом и публикацией не теряет сообщение | ADR-0002, п. 6                           |
+| `processed_events (handler, event_id)` | Повторная доставка не обрабатывается дважды                                                                | ADR-0002, п. 7                           |
+| Ключ партиции                          | Сообщения одной сущности обрабатываются по порядку                                                         | ADR-0002, п. 4                           |
+| DLQ на consumer group                  | Сломанное сообщение не блокирует партицию и обрабатывается повторно только своей группой                   | ADR-0002, п. 8                           |
+| `Idempotency-Key`                      | Повтор `POST /orders` не создаёт второй заказ                                                              | ADR-0005, п. 9                           |
+| Конверт сообщения                      | Единый формат событий и команд                                                                             | ADR-0002, п. 5; схема — `libs/contracts` |
+
+## 8. Слои внутри сервиса
+
+**Полная схема (hexagonal)** — для сервисов с настоящей бизнес-логикой: order (saga, под-заказы), payment (платежи и проводки), erp (резервы), catalog (модерация), crm (профили и сегменты).
+
+```
+src/
+  domain/          # сущности, value objects, чистые функции (в order — переходы saga); без фреймворков
+  application/     # use cases и порты: репозитории, UnitOfWork, публикация сообщений
+  infrastructure/  # Prisma-репозитории, outbox и relay, адаптер Kafka, клиент провайдера
+  interface/       # HTTP-контроллеры, обработчики сообщений, DTO
+```
+
+**Тонкая схема** — для проекций и notification: логики почти нет, и четыре слоя были бы церемонией.
+
+```
+src/
+  handlers/        # обработчики событий: идемпотентность, upsert в read-model
+  repositories/    # Prisma
+  api/             # контроллеры, если есть
+```
+
+Правила полной схемы:
+
+- `domain` не импортирует NestJS, Prisma, kafkajs, `infrastructure` и `interface`.
+- Типы, сгенерированные Prisma, не выходят за `infrastructure`: репозиторий переводит их в доменные сущности.
+- Транзакция — порт `UnitOfWork` в `application`. Агрегат, outbox и `processed_events` сохраняются в одной единице работы (ADR-0002).
+- Каждый метод репозитория принимает область доступа первым аргументом (ADR-0006, п. 5).
+- Доменные события собирает агрегат; в записи outbox их превращает инфраструктура.
+
+Первое правило проверяет линтер:
+
+```js
+// eslint.config.mjs
+{
+  files: ['apps/*/src/domain/**/*.ts'],
+  rules: {
+    'no-restricted-imports': ['error', {
+      patterns: ['@nestjs/*', '@prisma/*', 'kafkajs', '**/generated/**', '**/infrastructure/**', '**/interface/**'],
+    }],
+  },
 }
 ```
 
-## 6. Слои внутри сервиса (Clean / Hexagonal)
-```
-src/
-  domain/          # entities, value objects, domain services: чистый TS, 100% unit-тесты
-  application/     # use cases, ports (interfaces)
-  infrastructure/  # prisma repos, kafka adapters, outbox relay
-  interface/       # controllers, consumers, DTO
-```
-Jest unit-тесты пишем на `domain` и `application`, порты подменяем моками.
+## 9. Тестирование
 
-## 7. Топики Kafka (первая версия)
-`auth.events`, `catalog.events`, `order.events`, `payment.events`, `erp.events`, `crm.events`, у каждого DLQ `*.dlq`.
-Один топик на bounded context, тип события лежит в `type`.
+| Уровень        | Что проверяет                                                                                                                         | Инструменты                                       |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| Unit           | Домен; use cases с фейками портов; переходы saga — по тесту на строку таблицы (ADR-0005, п. 11); комиссия и проводки (ADR-0007, п. 9) | Jest                                              |
+| Property-based | Инварианты журнала проводок на случайных последовательностях операций (ADR-0007, п. 9)                                                | Jest + fast-check                                 |
+| Интеграционные | Репозитории; outbox и relay; идемпотентные обработчики; блокировки и гонки; триггеры журнала                                          | Jest + Testcontainers: настоящие Postgres и Kafka |
+| Контрактные    | Схемы и upcasters событий и команд по фикстурам (ADR-0003, п. 5)                                                                      | Jest                                              |
+| E2E            | Сквозные сценарии через gateway, включая сбои (ADR-0005, п. 11) и изоляцию продавцов (ADR-0006, п. 8)                                 | docker compose + `fake-psp`, дедлайны в секундах  |
+
+- Процент покрытия — не цель. Цель — чтобы у каждого сценария отказа из ADR и каждого критерия этапа из ТЗ был тест.
+- Unit-тесты с моками не ловят самые опасные баги этой системы: транзакции с outbox, дубли, порядок сообщений, гонки saga, утечки между продавцами. Для них нужны интеграционные и e2e-тесты.
+
+## 10. Наблюдаемость
+
+- Одна операция пользователя — один трейс: W3C `traceparent` передаётся в HTTP-заголовках и в заголовках Kafka-сообщений, трейсы собирает Jaeger (ADR-0001, п. 6).
+- В конверте `correlationId` — один на всё оформление заказа, `causationId` — сообщение, которое вызвало текущее. По ним цепочка saga восстанавливается даже без трейсинга.
+
+## Открытые вопросы
+
+- Срок удержания денег продавца и минимальная сумма выплаты (ТЗ, раздел 10).
+- Где живут кросс-доменные отчёты админки (ADR-0004).
+- Возвраты после доставки и отрицательный баланс продавца (ADR-0005, ADR-0007).
+- Push статуса заказа на фронт (SSE) вместо опроса (ADR-0005).
+- gRPC для внутренних синхронных вызовов (ADR-0001).
