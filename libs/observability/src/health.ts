@@ -1,4 +1,4 @@
-import { Controller, Get, Inject } from '@nestjs/common';
+import { Controller, Get, Inject, SetMetadata } from '@nestjs/common';
 import { HealthCheck, HealthCheckService, HealthIndicatorService } from '@nestjs/terminus';
 
 /**
@@ -23,7 +23,14 @@ function withTimeout(promise: Promise<void>, ms: number): Promise<void> {
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
+/**
+ * Метка эндпоинта без аутентификации. Ключ живёт здесь, а не в `libs/auth`: health-пробы
+ * открыты всегда, и guard `libs/auth` читает эту же метку (`@Public()`).
+ */
+export const PUBLIC_ROUTE = 'auth:public';
+
 @Controller('health')
+@SetMetadata(PUBLIC_ROUTE, true)
 export class HealthController {
   constructor(
     private readonly health: HealthCheckService,

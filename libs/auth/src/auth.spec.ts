@@ -1,4 +1,5 @@
 import { Controller, Get, type INestApplication } from '@nestjs/common';
+import { ObservabilityModule } from '@repo/observability';
 import { Test } from '@nestjs/testing';
 import { newId } from '@repo/contracts';
 import { SignJWT, exportJWK, generateKeyPair } from 'jose';
@@ -134,7 +135,10 @@ describe('AuthModule: guard и области доступа', () => {
     const jwks = await serveJwks(issuer);
     server = jwks.server;
     const moduleRef = await Test.createTestingModule({
-      imports: [AuthModule.forRoot({ jwksUrl: jwks.url })],
+      imports: [
+        AuthModule.forRoot({ jwksUrl: jwks.url }),
+        ObservabilityModule.forRoot({ serviceName: 'auth-test', level: 'fatal' }),
+      ],
       controllers: [ProbeController],
     }).compile();
     app = moduleRef.createNestApplication();
@@ -161,6 +165,11 @@ describe('AuthModule: guard и области доступа', () => {
 
   it('@Public пропускает без токена', async () => {
     expect((await get('/open')).body).toEqual({ ok: true });
+  });
+
+  it('health-пробы открыты без токена', async () => {
+    expect((await get('/health/live')).status).toBe(200);
+    expect((await get('/health/ready')).status).toBe(200);
   });
 
   it('claims и область покупателя — только из проверенного токена', async () => {

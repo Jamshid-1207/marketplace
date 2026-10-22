@@ -221,6 +221,64 @@ services:
       resources:
         limits:
           memory: 256m
+  order-migrate:
+    profiles:
+      - core
+      - full
+    build:
+      context: .
+      dockerfile: apps/order/Dockerfile
+      target: migrate
+    environment:
+      DATABASE_URL: postgresql://order_svc:${ORDER_DB_PASSWORD}@postgres:5432/order_db
+      # тестовый каталог двух продавцов до этапа 5 (SD-02, п. 5.1)
+      SEED_CATALOG: 'true'
+    depends_on:
+      db-provision:
+        condition: service_completed_successfully
+  order:
+    profiles:
+      - core
+      - full
+    build:
+      context: .
+      dockerfile: apps/order/Dockerfile
+      target: runtime
+    restart: unless-stopped
+    environment:
+      PORT: '3000'
+      DATABASE_URL: postgresql://order_svc:${ORDER_DB_PASSWORD}@postgres:5432/order_db
+      DB_POOL_MAX: '5'
+      KAFKA_BROKERS: kafka:29092
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+      # ключи JWT до этапа 5 — у gateway (SD-02, п. 3.1)
+      JWKS_URL: http://gateway:3000/.well-known/jwks.json
+      PAYMENT_DEADLINE_MS: ${PAYMENT_DEADLINE_MS:-900000}
+      CAPTURE_DEADLINE_MS: ${CAPTURE_DEADLINE_MS:-300000}
+      CHECKOUT_TICK_MS: ${CHECKOUT_TICK_MS:-5000}
+    healthcheck:
+      test:
+        - CMD
+        - wget
+        - -qO-
+        - http://localhost:3000/health/ready
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
+    depends_on:
+      order-migrate:
+        condition: service_completed_successfully
+      kafka-init:
+        condition: service_completed_successfully
+      kafka:
+        condition: service_healthy
+      jaeger:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 256m
 
 volumes:
   pgdata:

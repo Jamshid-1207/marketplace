@@ -32,6 +32,9 @@
     },
     {
       "path": "./apps/payment"
+    },
+    {
+      "path": "./apps/order"
     }
   ]
 }

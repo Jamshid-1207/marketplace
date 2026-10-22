@@ -5,6 +5,16 @@
 
 ## [Unreleased] · Этап 2: оформление без склада
 ### Added
+- **Шаг 5: `apps/order`** (полный шаблон генератора, SD-02, п. 5).
+  - Данные: `catalog_skus` (read-model каталога), `orders`, `order_lines` (снимок цены и названия), `sub_orders`, `checkout_sagas` (с `correlation_id` и `trace_headers`), `idempotency_keys`; CHECK на состояния.
+  - Seed каталога из `libs/contracts/src/dev` (`dist/seed.js`, идемпотентный upsert) — в шаге `order-migrate` при `SEED_CATALOG=true`.
+  - Домен: `priceOrder` — цены из каталога, группировка по продавцам, суммы; `transition` — машина состояний этапа 2 чистой функцией, по тесту на каждую строку таблицы SD-02, п. 5.2.
+  - `POST /orders` (`202`, `Idempotency-Key` в транзакции заказа: повтор — тот же заказ, другое тело — `422`, недоступный SKU — `422` со списком), `GET /orders/:id` (чужой — `404`), `GET /orders` (курсор). Покупатель — только из JWT (`libs/auth`, JWKS gateway).
+  - Обработчики `payment.*`: блокировка saga → `processed_events` → `transition` → состояние, под-заказы, outbox.
+  - Планировщик дедлайнов раз в `CHECKOUT_TICK_MS`: каждая просроченная saga в своей транзакции (`SKIP LOCKED`) и в цепочке и трейсе своего `POST /orders`; очистка ключей идемпотентности старше суток.
+  - Тесты: 30 unit, интеграционные на Testcontainers — HTTP с настоящим JWT, конкурентный `Idempotency-Key`, полный путь через Kafka до `CONFIRMED`, дубль события, одновременные `payment.authorized` и дедлайн, список с курсором.
+  - compose: `JWKS_URL` gateway, дедлайны из env (`PAYMENT_DEADLINE_MS`, `CAPTURE_DEADLINE_MS`, `CHECKOUT_TICK_MS`) — e2e задаст секунды.
+- `libs/observability`: `/health/*` помечены публичными (`PUBLIC_ROUTE`); `@Public()` из `libs/auth` ставит ту же метку — глобальный `AuthGuard` не закрывает health-пробы.
 - **Шаг 4: `apps/payment`** (полный шаблон генератора, SD-02, п. 6).
   - Платёж: таблица `payments` (один на заказ, статус с CHECK, `correlation_id` и `trace_headers` оформления), статусы `CREATING` → `AWAITING_AUTHORIZATION` → `AUTHORIZED` → `CAPTURING` → `CAPTURED`, ветки `CAPTURE_FAILED`, `FAILED`, `CANCELLING` → `CANCELLED`. Решения по командам и webhook — чистые функции `domain/payment.ts`.
   - Команды `CreatePayment`, `CapturePayment`, `CancelPayment` в три шага: транзакция 1 — промежуточный статус, вызов провайдера с `Idempotency-Key = <paymentId>:<операция>`, транзакция 2 — итог и событие в outbox. Повторная доставка после сбоя повторяет вызов с тем же ключом: провайдер не выполняет операцию второй раз. Повтор уже выполненной команды публикует итоговое событие ещё раз.
@@ -33,6 +43,7 @@
   - `libs/auth`: `JwtVerifier` (jose, удалённый JWKS с кэшем, EdDSA, `iss`/`aud`/`exp`, claims по схеме ADR-0006), глобальный `AuthGuard` и `@Public()`, `@CurrentClaims()`, `@BuyerScope()` → `AccessScope`, `DevTokenIssuer` для заглушки входа в gateway (до этапа 5). 11 тестов через настоящий HTTP JWKS: просрочка, чужой ключ, чужие `iss`/`aud` при верной подписи, подмена claims, `401`/`403`, игнор `X-User-Id`.
 - `docs/system-design/02-checkout-without-stock.md`: дизайн этапа 2 — gateway, order, payment, fake-psp, `libs/auth`, 12 сценариев готовности, машина состояний этапа 2, вызовы провайдера без потерь и дублей, один трейс на оформление, job `e2e`.
 ### Decided
+- SD-02, ревизия 3 — уточнения order: дедлайны в env с суффиксом `_MS`; seed — `src/seed.ts`, собранный с сервисом, а не `prisma/seed.ts`; `title` в `order_lines`; под-заказы `CANCELLED` при отмене заказа; планировщик — транзакция на каждую saga.
 - SD-02, ревизия 2 — уточнения payment по ходу реализации: отмена из `CAPTURE_FAILED` снимает авторизацию; отмена из `CREATING` повторяет создание тем же ключом и снимает платёж; webhook раньше `payment.created` — `503`; колонка `failure_reason`; id события провайдера в `processed_events` — UUID v8 из SHA-256.
 - SD-02 утверждён: корзина — на этапе 7 со storefront; ключи JWT до этапа 5 — по JWKS из gateway (эфемерный ключ); сбой payment между списанием у провайдера и записью результата проверяется интеграционным тестом без точек отказа в рабочем коде; тестовые пользователи и seed-каталог временно в `libs/contracts/src/dev/`.
 

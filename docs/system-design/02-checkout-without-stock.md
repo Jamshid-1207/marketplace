@@ -1,6 +1,6 @@
 # System Design 02: Оформление без склада (этап 2)
 
-**Статус:** ✅ Утверждено · **Дата:** 2026-10-22 · **Ревизия:** 2
+**Статус:** ✅ Утверждено · **Дата:** 2026-10-22 · **Ревизия:** 3
 
 Этап 2 из ТЗ (раздел 8): gateway, order, payment, `fake-psp`. Первый сквозной сценарий — покупатель оформляет заказ у двух продавцов и платит. Склада ещё нет: шаги резерва saga пропускаются (ADR-0005, п. 10). Правила взяты из ADR-0001, 0002, 0005, 0006; здесь — что именно строим и как проверяем.
 
@@ -131,7 +131,8 @@ catalog_skus   (sku_id uuid PK, seller_id uuid, title text, price_minor bigint, 
 orders         (order_id uuid PK, buyer_id uuid, total_minor bigint, currency text,
                 shipping jsonb,            -- получатель, телефон, адрес: продавец увидит их в под-заказе (ADR-0006, п. 6)
                 created_at timestamptz)
-order_lines    (order_id, sub_order_id, sku_id, seller_id, qty int, unit_price_minor bigint, category_path uuid[])
+order_lines    (order_id, sub_order_id, sku_id, seller_id, title text, qty int, unit_price_minor bigint, category_path uuid[])
+               -- title — снимок названия: в OrderView позиция показывается без обращения к каталогу
 sub_orders     -- ADR-0005, п. 7; status PENDING до подтверждения заказа
 checkout_sagas -- ADR-0005, п. 7, плюс:
                --   correlation_id text   — продолжить цепочку из планировщика дедлайнов
@@ -141,7 +142,7 @@ idempotency_keys -- ADR-0005, п. 9
 
 Типы id — `uuid` (SD-01, п. 6.1), а не `text`, как в примерах ADR.
 
-- **Seed:** `prisma/seed.ts` — идемпотентный upsert `catalog_skus` из fixtures. В compose его запускает шаг `order-migrate` после миграций при `SEED_CATALOG=true`.
+- **Seed:** `src/seed.ts` — идемпотентный upsert `catalog_skus` из fixtures. Собирается вместе с сервисом (`dist/seed.js`): ему нужны собранные `libs/contracts` и клиент Prisma. В compose его запускает шаг `order-migrate` после миграций; без `SEED_CATALOG=true` он ничего не делает.
 
 ### 5.2 Машина состояний этапа 2
 
@@ -164,7 +165,10 @@ idempotency_keys -- ADR-0005, п. 9
 - `transition(saga, input)` — чистая функция в `domain` (ADR-0005, п. 4), по unit-тесту на строку.
 - Обработчик сообщения или дедлайна в одной транзакции: `SELECT … FOR UPDATE` строки saga → `idempotent()` → `transition` → состояние, под-заказы, outbox (ADR-0005, п. 7).
 - **Планировщик дедлайнов** раз в `CHECKOUT_TICK_MS` (5 с) берёт просроченные saga с `FOR UPDATE SKIP LOCKED`. Каждую обрабатывает в контексте цепочки и трейса, сохранённых в saga.
-- **Дедлайны** из env: `PAYMENT_DEADLINE` (15 мин), `CAPTURE_DEADLINE` (5 мин). В e2e — секунды.
+- **Дедлайны** из env в миллисекундах: `PAYMENT_DEADLINE_MS` (15 мин), `CAPTURE_DEADLINE_MS` (5 мин), `CHECKOUT_TICK_MS` (5 с). В e2e — секунды.
+- При отмене заказа под-заказы переходят в `CANCELLED`, при подтверждении — в `CONFIRMED`.
+- Планировщик берёт просроченные saga без блокировки, а каждую обрабатывает в своей транзакции: `FOR UPDATE SKIP LOCKED` с повторной проверкой `deadline_at` и состояния. Так у каждой saga свой контекст цепочки и трейса. Saga, занятую обработчиком события, возьмёт следующий тик.
+- Ключи идемпотентности старше 24 ч удаляет тот же планировщик раз в час.
 
 ### 5.3 HTTP
 

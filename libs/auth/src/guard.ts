@@ -8,13 +8,12 @@ import {
   type ExecutionContext,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { PUBLIC_ROUTE } from '@repo/observability';
 import type { AccessScope, Claims } from './claims';
 import { JwtVerifier } from './verifier';
 
-const PUBLIC = 'auth:public';
-
-/** Эндпоинт без токена: health, webhook провайдера (его подлинность проверяется подписью). */
-export const Public = () => SetMetadata(PUBLIC, true);
+/** Эндпоинт без токена: webhook провайдера (его подлинность проверяется подписью). Health открыт сам. */
+export const Public = () => SetMetadata(PUBLIC_ROUTE, true);
 
 interface AuthenticatedRequest {
   headers: Record<string, string | string[] | undefined>;
@@ -30,7 +29,7 @@ export class AuthGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const isPublic = this.reflector.getAllAndOverride<boolean>(PUBLIC, [
+    const isPublic = this.reflector.getAllAndOverride<boolean>(PUBLIC_ROUTE, [
       context.getHandler(),
       context.getClass(),
     ]);

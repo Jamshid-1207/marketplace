@@ -1,0 +1,135 @@
+// Схема order_db (ADR-0004). Таблицы outbox и processed_events принадлежат libs (SD-01, п. 6):
+// их DDL — в первой миграции, а модели здесь, чтобы prisma migrate dev не видел расхождений.
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Outbox {
+  id          BigInt    @id @default(autoincrement())
+  eventId     String    @unique @map("event_id") @db.Uuid
+  topic       String
+  messageKey  String    @map("message_key")
+  payload     Json
+  headers     Json      @default("{}")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  publishedAt DateTime? @map("published_at") @db.Timestamptz(6)
+
+  @@index([publishedAt, id], map: "outbox_unpublished")
+  @@map("outbox")
+}
+
+model ProcessedEvent {
+  handler     String
+  eventId     String   @map("event_id") @db.Uuid
+  processedAt DateTime @default(now()) @map("processed_at") @db.Timestamptz(6)
+
+  @@id([handler, eventId])
+  @@index([processedAt], map: "processed_events_processed_at")
+  @@map("processed_events")
+}
+
+/// Read-model каталога (ADR-0004, п. 3): на этапе 2 — seed, на этапе 5 — события product.*
+model CatalogSku {
+  skuId        String   @id @map("sku_id") @db.Uuid
+  sellerId     String   @map("seller_id") @db.Uuid
+  title        String
+  priceMinor   BigInt   @map("price_minor")
+  categoryPath String[] @map("category_path") @db.Uuid
+  active       Boolean
+
+  @@map("catalog_skus")
+}
+
+/// Заказ (SD-02, п. 5.1). Статуса здесь нет: он в checkout_sagas и sub_orders (ADR-0005, п. 7).
+model Order {
+  orderId    String   @id @map("order_id") @db.Uuid
+  buyerId    String   @map("buyer_id") @db.Uuid
+  totalMinor BigInt   @map("total_minor")
+  currency   String
+  /// получатель, телефон, адрес: продавец увидит их в под-заказе (ADR-0006, п. 6)
+  shipping   Json
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  lines     OrderLine[]
+  subOrders SubOrder[]
+  saga      CheckoutSaga?
+
+  /// список заказов покупателя, новые сверху, курсор (created_at, order_id)
+  @@index([buyerId, createdAt(sort: Desc), orderId(sort: Desc)], map: "orders_buyer_created")
+  @@map("orders")
+}
+
+/// Позиция с ценой и названием на момент заказа (ADR-0001, п. 2)
+model OrderLine {
+  orderId        String   @map("order_id") @db.Uuid
+  skuId          String   @map("sku_id") @db.Uuid
+  subOrderId     String   @map("sub_order_id") @db.Uuid
+  sellerId       String   @map("seller_id") @db.Uuid
+  title          String
+  qty            Int
+  unitPriceMinor BigInt   @map("unit_price_minor")
+  categoryPath   String[] @map("category_path") @db.Uuid
+
+  order Order @relation(fields: [orderId], references: [orderId])
+
+  @@id([orderId, skuId])
+  @@map("order_lines")
+}
+
+/// Под-заказ продавца (ADR-0005, п. 7): PENDING до подтверждения заказа
+model SubOrder {
+  subOrderId  String   @id @map("sub_order_id") @db.Uuid
+  orderId     String   @map("order_id") @db.Uuid
+  sellerId    String   @map("seller_id") @db.Uuid
+  status      String
+  amountMinor BigInt   @map("amount_minor")
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  order Order @relation(fields: [orderId], references: [orderId])
+
+  @@index([orderId], map: "sub_orders_order")
+  @@index([sellerId, status], map: "sub_orders_seller")
+  @@map("sub_orders")
+}
+
+/// Saga оформления (ADR-0005, п. 7; SD-02, п. 5.1)
+model CheckoutSaga {
+  orderId       String    @id @map("order_id") @db.Uuid
+  state         String
+  paymentId     String?   @map("payment_id") @db.Uuid
+  paymentUrl    String?   @map("payment_url")
+  cancelReason  String?   @map("cancel_reason")
+  deadlineAt    DateTime? @map("deadline_at") @db.Timestamptz(6)
+  /// aggregateVersion заказа: +1 на каждое событие заказа или под-заказа
+  version       Int       @default(0)
+  /// цепочка и трейс POST /orders: в них работает планировщик дедлайнов (SD-02, п. 7)
+  correlationId String    @map("correlation_id")
+  traceHeaders  Json      @default("{}") @map("trace_headers")
+  updatedAt     DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  order Order @relation(fields: [orderId], references: [orderId])
+
+  /// не частичный: Prisma-схема частичный индекс не выражает
+  @@index([deadlineAt], map: "checkout_sagas_due")
+  @@map("checkout_sagas")
+}
+
+/// Ключи идемпотентности POST /orders (ADR-0005, п. 9); старше 24 ч удаляются
+model IdempotencyKey {
+  userId      String   @map("user_id") @db.Uuid
+  key         String   @db.Uuid
+  requestHash String   @map("request_hash")
+  orderId     String   @map("order_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@id([userId, key])
+  @@index([createdAt], map: "idempotency_keys_created")
+  @@map("idempotency_keys")
+}
