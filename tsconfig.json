@@ -38,6 +38,9 @@
     },
     {
       "path": "./apps/gateway"
+    },
+    {
+      "path": "./apps/e2e"
     }
   ]
 }

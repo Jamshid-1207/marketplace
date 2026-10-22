@@ -5,6 +5,11 @@
 
 ## [Unreleased] · Этап 2: оформление без склада
 ### Added
+- **Шаг 7: `apps/e2e` и CI job `e2e`** (SD-02, п. 9–10).
+  - Сценарии 1–3 и 5–12 критерия готовности через gateway на compose-стенде; оплата — тестовым API fake-psp, остановка и «убийство» сервисов — `docker compose stop/kill/start`. Сценарий 2 передаёт свой `traceparent` в `POST /orders` и ищет трейс через API Jaeger: в нём должны быть gateway, order, payment и fake-psp. Сценарии 5 и 6 ждут один общий дедлайн.
+  - `compose.e2e.yaml`: дедлайн оплаты 75 с (хватает на перезапуск сервиса посреди оплаты), списания 20 с, тик 1 с; лимит gateway 10 000 в минуту.
+  - `apps/e2e/run.sh`: сборка образов → инфраструктура → сервисы до `healthy` → сценарии → логи при ошибке → стенд удаляется. Таргет `e2e` зависит от gateway, order, payment и fake-psp (`implicitDependencies`), поэтому `nx affected` запускает его при их изменении.
+  - Тег `type:e2e`: из кода — только `libs/contracts`.
 - **Шаг 6: `apps/gateway`** (генератор `--bare --port 3000`, SD-02, п. 3.1).
   - `/api/orders/**` → order (без префикса `/api`), `POST /webhooks/psp` → payment без JWT; тело — потоком, без разбора, поэтому подпись webhook сохраняется байт в байт. `X-Request-Id` и `traceparent` уходят в сервис.
   - JWT на `/api/**` (глобальный `AuthGuard`), лимит `RATE_LIMIT_PER_MINUTE` (100) на пользователя, на анонима — на IP; `429` сверх лимита.

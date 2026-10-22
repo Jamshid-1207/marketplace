@@ -69,6 +69,24 @@ jobs:
       - if: always()
         run: docker compose --profile core down -v
 
+  # SD-02, п. 10: сценарии этапа 2 через gateway на compose-стенде. Запускается, если изменились
+  # сервисы оформления, их libs или сами сценарии
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - uses: nrwl/nx-set-shas@v5
+      - run: pnpm install --frozen-lockfile
+      - run: cp .env.example .env
+      - run: pnpm nx affected -t e2e --output-style=static
+
   # Критерий 1 SD-01: инфраструктура поднимается, повторный up ничего не ломает
   infra-smoke:
     runs-on: ubuntu-latest

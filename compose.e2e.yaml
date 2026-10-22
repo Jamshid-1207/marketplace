@@ -1,0 +1,18 @@
+# Настройки стенда для e2e (SD-02, п. 9): поверх compose.yaml.
+#   docker compose -f compose.yaml -f compose.e2e.yaml --profile core up -d
+# Дедлайны — секунды вместо минут; оплачивает тестовое API fake-psp.
+services:
+  order:
+    environment:
+      # хватает на перезапуск сервиса посреди оплаты (сценарии 3, 10), но тест таймаута не тянется
+      PAYMENT_DEADLINE_MS: '75000'
+      CAPTURE_DEADLINE_MS: '20000'
+      CHECKOUT_TICK_MS: '1000'
+  gateway:
+    environment:
+      # все сценарии идут от нескольких тестовых пользователей подряд
+      RATE_LIMIT_PER_MINUTE: '10000'
+      DEV_AUTH: 'true'
+  fake-psp:
+    environment:
+      PSP_TEST_API: 'true'

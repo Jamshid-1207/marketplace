@@ -24,6 +24,8 @@ export default [
             { sourceTag: 'type:ui', onlyDependOnLibsWithTags: ['type:contracts', 'type:ui'] },
             { sourceTag: 'type:contracts', onlyDependOnLibsWithTags: [] },
             { sourceTag: 'type:tooling', onlyDependOnLibsWithTags: [] },
+            // e2e ходит в стенд по HTTP; из кода — только контракты и тестовые данные
+            { sourceTag: 'type:e2e', onlyDependOnLibsWithTags: ['type:contracts'] },
             {
               sourceTag: 'platform:web',
               onlyDependOnLibsWithTags: ['platform:web', 'platform:shared'],

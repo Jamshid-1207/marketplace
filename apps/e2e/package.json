@@ -1,0 +1,30 @@
+{
+  "name": "@repo/e2e",
+  "version": "0.0.1",
+  "private": true,
+  "type": "commonjs",
+  "nx": {
+    "tags": [
+      "type:e2e",
+      "platform:node"
+    ],
+    "implicitDependencies": [
+      "@repo/gateway",
+      "@repo/order",
+      "@repo/payment",
+      "@repo/fake-psp"
+    ],
+    "targets": {
+      "e2e": {
+        "executor": "nx:run-commands",
+        "options": {
+          "command": "bash apps/e2e/run.sh"
+        },
+        "cache": false
+      }
+    }
+  },
+  "dependencies": {
+    "@repo/contracts": "workspace:*"
+  }
+}

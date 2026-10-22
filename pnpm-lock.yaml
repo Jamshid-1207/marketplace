@@ -257,6 +257,12 @@ importers:
         specifier: ^8.72.0
         version: 8.72.0(eslint@10.13.0(jiti@2.7.0)(supports-color@8.1.1))(supports-color@8.1.1)(typescript@6.0.3)
 
+  apps/e2e:
+    dependencies:
+      '@repo/contracts':
+        specifier: workspace:*
+        version: link:../../libs/contracts
+
   apps/fake-psp:
     dependencies:
       '@nestjs/common':
