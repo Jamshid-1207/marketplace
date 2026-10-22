@@ -21,13 +21,14 @@ import {
   testKafka,
   testLogger,
   unique,
+  testBrokers,
 } from './testing/helpers';
 
 describe('consumer runner (интеграция)', () => {
   const pool = new Pool({ connectionString: databaseUrl(), max: 5 });
   const kafka = createKafka({
     clientId: 'consumer-int',
-    brokers: [process.env.TEST_KAFKA_BROKERS as string],
+    brokers: testBrokers(),
     logger: testLogger,
   });
   const publisher = new KafkaPublisher(kafka);

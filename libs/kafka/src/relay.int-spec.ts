@@ -16,6 +16,7 @@ import {
   sqlTx,
   testLogger,
   unique,
+  testBrokers,
 } from './testing/helpers';
 
 const relayLogger: RelayLogger = testLogger;
@@ -24,7 +25,7 @@ describe('outbox relay → Kafka (интеграция)', () => {
   const pool = new Pool({ connectionString: databaseUrl(), max: 5 });
   const kafka = createKafka({
     clientId: 'relay-int',
-    brokers: [process.env.TEST_KAFKA_BROKERS as string],
+    brokers: testBrokers(),
     logger: testLogger,
   });
   const publisher = new KafkaPublisher(kafka);

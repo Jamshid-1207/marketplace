@@ -11,13 +11,16 @@
   "exclude": ["src/**/*.spec.ts", "src/**/*.int-spec.ts", "src/testing/**"],
   "references": [
     {
+      "path": "../outbox/tsconfig.lib.json"
+    },
+    {
       "path": "../observability/tsconfig.lib.json"
     },
     {
       "path": "../contracts/tsconfig.lib.json"
     },
     {
-      "path": "../outbox/tsconfig.lib.json"
+      "path": "../testing/tsconfig.lib.json"
     },
     {
       "path": "../idempotency/tsconfig.lib.json"
