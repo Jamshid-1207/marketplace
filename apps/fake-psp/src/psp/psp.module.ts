@@ -8,12 +8,12 @@ import {
 import { PinoLogger } from 'nestjs-pino';
 import type { Config } from '../config';
 import { PageController } from './page.controller';
-import { PaymentsController } from './payments.controller';
+import { PaymentsController, PayoutsController } from './payments.controller';
 import { PspStore } from './psp-store';
 import { TestController } from './test.controller';
 import { WebhookDispatcher } from './webhooks';
 
-/** Истечение неоплаченных платежей: раз в секунду. */
+/** Истечение неоплаченных платежей и итоги выплат: раз в секунду. */
 @Injectable()
 class Expirer implements OnApplicationBootstrap, OnApplicationShutdown {
   private timer?: NodeJS.Timeout;
@@ -21,7 +21,10 @@ class Expirer implements OnApplicationBootstrap, OnApplicationShutdown {
   constructor(private readonly store: PspStore) {}
 
   onApplicationBootstrap(): void {
-    this.timer = setInterval(() => this.store.expireDue(), 1_000);
+    this.timer = setInterval(() => {
+      this.store.expireDue();
+      this.store.settleDuePayouts();
+    }, 1_000);
     this.timer.unref();
   }
 
@@ -37,6 +40,7 @@ export class PspModule {
       module: PspModule,
       controllers: [
         PaymentsController,
+        PayoutsController,
         PageController,
         ...(config.PSP_TEST_API ? [TestController] : []),
       ],
@@ -65,6 +69,7 @@ export class PspModule {
             new PspStore({
               publicUrl: config.PSP_PUBLIC_URL,
               paymentTtlMs: config.PSP_PAYMENT_TTL_MS,
+              payoutDelayMs: config.PSP_PAYOUT_DELAY_MS,
               onEvent: (event) => webhooks.dispatch(event),
             }),
         },

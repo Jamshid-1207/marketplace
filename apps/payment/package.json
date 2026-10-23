@@ -99,6 +99,7 @@
             "DATABASE_URL": "postgresql://payment_svc:payment_local@localhost:5432/payment_db",
             "KAFKA_BROKERS": "localhost:9092",
             "PSP_API_URL": "http://localhost:4000",
+            "JWKS_URL": "http://localhost:3000/.well-known/jwks.json",
             "PSP_WEBHOOK_SECRET": "fake-psp-local-webhook-secret",
             "LOG_PRETTY": "true"
           }
@@ -112,6 +113,7 @@
     "@nestjs/platform-express": "12.2.0",
     "@prisma/adapter-pg": "7.10.1",
     "@prisma/client": "7.10.1",
+    "@repo/auth": "workspace:*",
     "@repo/contracts": "workspace:*",
     "@repo/idempotency": "workspace:*",
     "@repo/kafka": "workspace:*",
@@ -126,6 +128,7 @@
   "devDependencies": {
     "@repo/testing": "workspace:*",
     "@types/express": "^5.0.6",
+    "fast-check": "4.10.2",
     "prisma": "7.10.1"
   }
 }

@@ -40,6 +40,7 @@ import {
   type PaymentTx,
   type PspGateway,
 } from './ports';
+import { Settlements } from './settlements';
 
 export interface PspWebhookEvent {
   id: string;
@@ -65,11 +66,15 @@ export function providerEventUuid(id: string): string {
  * команды после сбоя видит промежуточный статус и повторяет шаги 2–3 с тем же ключом.
  */
 export class PaymentService {
+  private readonly settlements: Settlements;
+
   constructor(
     private readonly payments: PaymentRepository,
     private readonly psp: PspGateway,
     private readonly log: Log,
-  ) {}
+  ) {
+    this.settlements = new Settlements(log);
+  }
 
   async create(command: { orderId: string; amount: Money }): Promise<void> {
     const payment = await this.payments.transaction(async (tx) => {
@@ -114,11 +119,8 @@ export class PaymentService {
         );
       }
       if (current) {
-        // разбивка — источник суммы возврата при отмене под-заказа (ADR-0005, п. 8)
-        await tx.saveSubOrderAmounts(
-          current.paymentId,
-          command.subOrders.map((s) => ({ subOrderId: s.subOrderId, amount: s.amount })),
-        );
+        // разбивка — источник суммы возврата (ADR-0005, п. 8) и позиций для комиссии (SD-04, п. 5)
+        await tx.saveBreakdown(current.paymentId, command.subOrders);
       }
       return (await this.proceed(tx, current, decideCapture(current), 'capture')) ? current : null;
     });
@@ -129,6 +131,8 @@ export class PaymentService {
       if (result.status === 'captured') {
         current.status = 'CAPTURED';
         await this.emit(tx, current, PaymentCapturedV1, { amount: current.amount });
+        // деньги продавцам и комиссия — в той же транзакции, что и итог списания (ADR-0007, п. 7)
+        await this.settlements.capture(tx, current.paymentId, current.orderId);
       } else {
         current.status = 'CAPTURE_FAILED';
         current.failureReason = result.reason;
@@ -198,6 +202,7 @@ export class PaymentService {
         failureReason: null,
       };
       await tx.saveRefund(refund);
+      await this.settlements.refundRequested(tx, command.subOrderId);
       return { payment, refund };
     });
     if (!step) return;
@@ -216,6 +221,7 @@ export class PaymentService {
       if (result.status === 'refunded') {
         pending.status = 'REFUNDED';
         await tx.saveRefund(pending);
+        await this.settlements.refundCompleted(tx, pending.subOrderId);
         await this.emit(tx, current, PaymentRefundedV1, {
           subOrderId: pending.subOrderId,
           amount: pending.amount,
@@ -224,6 +230,7 @@ export class PaymentService {
         pending.status = 'FAILED';
         pending.failureReason = result.reason;
         await tx.saveRefund(pending);
+        await this.settlements.refundFailed(tx, pending.subOrderId);
         this.log.error(
           { ...ref, alert: true, reason: result.reason },
           'возврат отклонён провайдером',

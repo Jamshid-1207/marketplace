@@ -1,0 +1,19 @@
+{
+  "eventId": "0192b4c6-0000-7000-8000-00000000e200",
+  "type": "payout.paid",
+  "version": 1,
+  "aggregateType": "payout",
+  "aggregateId": "0192b4c6-0000-7000-8000-0000000000f1",
+  "aggregateVersion": 2,
+  "occurredAt": "2026-10-23T12:00:00.000Z",
+  "correlationId": "req-payout-1",
+  "causationId": null,
+  "payload": {
+    "payoutId": "0192b4c6-0000-7000-8000-0000000000f1",
+    "sellerId": "0192b4c6-0000-7000-8000-00000000a000",
+    "amount": {
+      "amountMinor": 50000000,
+      "currency": "UZS"
+    }
+  }
+}

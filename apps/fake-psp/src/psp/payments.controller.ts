@@ -12,6 +12,12 @@ import type { Response } from 'express';
 import { z } from 'zod';
 import { PspStore, view, type PspResponse } from './psp-store';
 
+const PayoutBody = z.object({
+  merchantReference: z.string().min(1).max(100),
+  sellerId: z.string().min(1).max(100),
+  amountMinor: z.number().int().positive().refine(Number.isSafeInteger),
+});
+
 const RefundBody = z.object({
   amountMinor: z.number().int().positive().refine(Number.isSafeInteger),
 });
@@ -98,6 +104,28 @@ export class PaymentsController {
     return send(
       res,
       this.store.idempotent(requireKey(key), { op: 'void', id }, () => this.store.void(id)),
+    );
+  }
+}
+
+/** Выплаты продавцам (SD-04, п. 6): итог — webhook `payout.paid` или `payout.failed`. */
+@Controller('v1/payouts')
+export class PayoutsController {
+  constructor(private readonly store: PspStore) {}
+
+  @Post()
+  create(
+    @Headers('idempotency-key') key: string | undefined,
+    @Body() body: unknown,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const parsed = PayoutBody.safeParse(body);
+    if (!parsed.success) throw new BadRequestException(z.prettifyError(parsed.error));
+    return send(
+      res,
+      this.store.idempotent(requireKey(key), { op: 'payout', ...parsed.data }, () =>
+        this.store.createPayout(parsed.data),
+      ),
     );
   }
 }

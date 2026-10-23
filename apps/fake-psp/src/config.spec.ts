@@ -7,6 +7,7 @@ describe('loadConfig', () => {
       PSP_PUBLIC_URL: 'http://localhost:4000',
       PSP_WEBHOOK_SECRET: 'fake-psp-local-webhook-secret',
       PSP_PAYMENT_TTL_MS: 30 * 60_000,
+      PSP_PAYOUT_DELAY_MS: 2_000,
       PSP_WEBHOOK_RETRY_FOR_MS: 30 * 60_000,
       PSP_TEST_API: false,
       LOG_LEVEL: 'info',

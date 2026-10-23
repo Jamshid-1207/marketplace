@@ -42,7 +42,12 @@ describe('payment: шина и health (интеграция)', () => {
   let handler: SmokeHandler;
 
   beforeAll(async () => {
-    await createTopics({ topic: SmokePingedV1.topic }, { topic: 'payment-service.dlq' });
+    await createTopics(
+      { topic: SmokePingedV1.topic },
+      { topic: 'payment.commands' },
+      { topic: 'order.events' },
+      { topic: 'payment-service.dlq' },
+    );
     const config = loadConfig({
       DATABASE_URL: testDatabaseUrl(),
       KAFKA_BROKERS: testBrokers().join(','),

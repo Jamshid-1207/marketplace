@@ -15,12 +15,14 @@ export class ProxyController {
   private readonly order: RequestHandler;
   private readonly payment: RequestHandler;
   private readonly erp: RequestHandler;
+  private readonly paymentApi: RequestHandler;
 
   constructor(@Inject(CONFIG) config: Config) {
     const timeoutMs = config.UPSTREAM_TIMEOUT_MS;
     this.order = upstream({ target: config.ORDER_URL, timeoutMs, stripPrefix: '/api' });
     this.payment = upstream({ target: config.PAYMENT_URL, timeoutMs });
     this.erp = upstream({ target: config.ERP_URL, timeoutMs, stripPrefix: '/api' });
+    this.paymentApi = upstream({ target: config.PAYMENT_URL, timeoutMs, stripPrefix: '/api' });
   }
 
   /** Заказы покупателя и под-заказы в кабинете продавца — в order (SD-03, п. 6.3). */
@@ -29,15 +31,27 @@ export class ProxyController {
     void this.order(req, res, next);
   }
 
-  /** Склады и остатки в кабинете продавца — в erp (SD-03, п. 5.6). */
+  /** Склады, остатки и реестр продаж в кабинете продавца — в erp (SD-03, п. 5.6; SD-04, п. 7). */
   @All([
     'api/seller/warehouses',
     'api/seller/warehouses/*path',
     'api/seller/stock',
     'api/seller/stock/*path',
+    'api/seller/sales/*path',
   ])
   warehouse(@Req() req: Request, @Res() res: Response, @Next() next: NextFunction): void {
     void this.erp(req, res, next);
+  }
+
+  /** Финансы и выплаты продавца, админка денег — в payment (SD-04, п. 4, 8). */
+  @All([
+    'api/seller/finance/*path',
+    'api/seller/payouts',
+    'api/seller/payouts/*path',
+    'api/admin/*path',
+  ])
+  money(@Req() req: Request, @Res() res: Response, @Next() next: NextFunction): void {
+    void this.paymentApi(req, res, next);
   }
 
   /** Без JWT и лимита: подлинность проверяет payment по подписи, провайдер повторяет сам. */

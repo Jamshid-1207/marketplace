@@ -19,6 +19,10 @@ interface DoublePayment {
 export class PspDouble {
   readonly payments = new Map<string, DoublePayment>();
   readonly requests: { path: string; key: string | undefined }[] = [];
+  readonly payouts = new Map<
+    string,
+    { id: string; merchantReference: string; amountMinor: number }
+  >();
   /** Сколько следующих запросов ответить 503. */
   failNext = 0;
   private readonly responses = new Map<string, { status: number; body: unknown }>();
@@ -74,6 +78,15 @@ export class PspDouble {
   }
 
   private operation(path: string, body: Record<string, unknown>) {
+    if (path === '/v1/payouts') {
+      const id = `po_${++this.seq}`;
+      this.payouts.set(id, {
+        id,
+        merchantReference: String(body.merchantReference),
+        amountMinor: Number(body.amountMinor),
+      });
+      return { status: 201, body: { id, status: 'pending' } };
+    }
     if (path === '/v1/payments') {
       const id = `psp_${++this.seq}`;
       this.payments.set(id, {

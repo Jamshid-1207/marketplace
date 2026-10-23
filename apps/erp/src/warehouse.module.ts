@@ -9,10 +9,11 @@ import { PrismaStockRepository } from './infrastructure/prisma-stock.repository'
 import { CabinetController } from './interface/cabinet.controller';
 import { ExpiryScheduler } from './interface/expiry.scheduler';
 import { MessagingHandlers } from './interface/messaging.handlers';
+import { SalesController } from './interface/sales.controller';
 
 /** Склады, остатки, резервы и реестр продаж (SD-03, п. 5). */
 @Module({
-  controllers: [CabinetController],
+  controllers: [CabinetController, SalesController],
   providers: [
     PrismaStockRepository,
     PrismaCabinetRepository,

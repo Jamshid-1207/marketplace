@@ -24,4 +24,5 @@ export * from './events/payment/payment-captured.v1';
 export * from './events/payment/payment-created.v1';
 export * from './events/payment/payment-failed.v1';
 export * from './events/payment/payment-refunded.v1';
+export * from './events/payment/payout-events.v1';
 export * from './events/smoke/smoke-pinged.v1';

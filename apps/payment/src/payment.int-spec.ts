@@ -35,6 +35,7 @@ describe('payment (интеграция)', () => {
     await createTopics(
       { topic: 'payment.commands' },
       { topic: 'payment.events' },
+      { topic: 'order.events' },
       { topic: 'payment-service.dlq' },
     );
     const config = loadConfig({

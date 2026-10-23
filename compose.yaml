@@ -177,6 +177,8 @@ services:
       target: migrate
     environment:
       DATABASE_URL: postgresql://payment_svc:${PAYMENT_DB_PASSWORD}@postgres:5432/payment_db
+      # категории seed-каталога до этапа 5 (SD-04, решение 3)
+      SEED_CATEGORIES: 'true'
     depends_on:
       db-provision:
         condition: service_completed_successfully
@@ -197,6 +199,9 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
       # провайдер внутри сети compose; webhook от него идёт через gateway (SD-02, п. 3)
       PSP_API_URL: http://fake-psp:3000
+      JWKS_URL: http://gateway:3000/.well-known/jwks.json
+      SELLER_HOLD_MS: ${SELLER_HOLD_MS:-604800000}
+      MIN_PAYOUT_MINOR: ${MIN_PAYOUT_MINOR:-10000000}
       PSP_WEBHOOK_SECRET: ${PSP_WEBHOOK_SECRET:?задайте в .env}
     healthcheck:
       test:

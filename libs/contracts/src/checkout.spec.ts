@@ -103,8 +103,10 @@ describe('сообщения оформления', () => {
 
   it('события платежа — ключ paymentId, события заказа — ключ orderId', () => {
     for (const definition of messages.definitions().filter((d) => d.kind === 'event')) {
-      const payload = { orderId: 'order', paymentId: 'payment' };
-      if (definition.topic === 'payment.events') expect(definition.key(payload)).toBe('payment');
+      const payload = { orderId: 'order', paymentId: 'payment', payoutId: 'payout' };
+      // выплата — свой агрегат со своим ключом (SD-04, п. 6)
+      const paymentKey = definition.aggregateType === 'payout' ? 'payout' : 'payment';
+      if (definition.topic === 'payment.events') expect(definition.key(payload)).toBe(paymentKey);
       if (definition.topic === 'order.events') expect(definition.key(payload)).toBe('order');
     }
   });

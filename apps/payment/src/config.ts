@@ -21,6 +21,24 @@ export const ConfigSchema = z.object({
   PSP_TIMEOUT_MS: z.coerce.number().int().positive().default(5_000),
   /** Секрет подписи webhook, общий с провайдером (SD-02, п. 6.3). */
   PSP_WEBHOOK_SECRET: z.string().min(16),
+  /** Ключи проверки JWT для кабинета и админки: до этапа 5 — gateway (SD-02, п. 3.1). */
+  JWKS_URL: z.url().default('http://localhost:3000/.well-known/jwks.json'),
+  /** Срок удержания денег продавца после доставки (ADR-0007, п. 5): 7 дней. */
+  SELLER_HOLD_MS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(7 * 24 * 60 * 60_000),
+  /** Минимальная выплата в тийинах: 100 000 сум (SD-04, решение 5). */
+  MIN_PAYOUT_MINOR: z.coerce.number().int().positive().default(10_000_000),
+  /** Как часто снимать удержание и отправлять выплаты. */
+  MONEY_TICK_MS: z.coerce.number().int().positive().default(5_000),
+  /** Как часто сверять инварианты журнала (ADR-0007, п. 7): раз в сутки. */
+  RECONCILE_INTERVAL_MS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(24 * 60 * 60_000),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
   LOG_PRETTY: z.stringbool().default(false),
 });

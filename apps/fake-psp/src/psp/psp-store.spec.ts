@@ -134,6 +134,36 @@ describe('PspStore', () => {
     expect(store.get(id)?.refunds).toBe(1);
   });
 
+  it('выплата: pending, через задержку — paid и webhook payout.paid с merchantReference', () => {
+    const { store, events, advance } = setup();
+    const { id } = store.createPayout({
+      merchantReference: 'po-1',
+      sellerId: 's',
+      amountMinor: 5_000,
+    }).body as { id: string };
+    expect(store.settleDuePayouts()).toBe(0);
+    advance(1_000);
+    expect(store.settleDuePayouts()).toBe(1);
+    expect(store.getPayout(id)?.status).toBe('paid');
+    expect(events.at(-1)).toMatchObject({
+      type: 'payout.paid',
+      data: { payoutId: id, merchantReference: 'po-1', status: 'paid' },
+    });
+    expect(store.settleDuePayouts()).toBe(0);
+  });
+
+  it('режим отказа выплат: payout.failed с причиной', () => {
+    const { store, events, advance } = setup();
+    store.failPayouts = true;
+    store.createPayout({ merchantReference: 'po-2', sellerId: 's', amountMinor: 5_000 });
+    advance(1_000);
+    store.settleDuePayouts();
+    expect(events.at(-1)).toMatchObject({
+      type: 'payout.failed',
+      data: { reason: 'bank_rejected' },
+    });
+  });
+
   it('неизвестный платёж — 404', () => {
     const { store } = setup();
     expect(store.capture('psp_nope').status).toBe(404);

@@ -26,6 +26,7 @@ import { PaymentCapturedV1 } from './events/payment/payment-captured.v1';
 import { PaymentCreatedV1 } from './events/payment/payment-created.v1';
 import { PaymentFailedV1 } from './events/payment/payment-failed.v1';
 import { PaymentRefundedV1 } from './events/payment/payment-refunded.v1';
+import { PayoutFailedV1, PayoutPaidV1 } from './events/payment/payout-events.v1';
 import { SmokePingedV1 } from './events/smoke/smoke-pinged.v1';
 import { MessageRegistry } from './registry';
 
@@ -63,4 +64,7 @@ export const messages = new MessageRegistry([
   SubOrderDeliveredV1,
   SubOrderCancelledV1,
   PaymentRefundedV1,
+  // выплаты продавцам (SD-04, п. 6)
+  PayoutPaidV1,
+  PayoutFailedV1,
 ]);

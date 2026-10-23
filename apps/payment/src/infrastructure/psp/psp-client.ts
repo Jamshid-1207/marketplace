@@ -3,6 +3,7 @@ import { z } from 'zod';
 import {
   PspRejectedError,
   type CaptureResult,
+  type PayoutResult,
   type PspGateway,
   type RefundResult,
   type VoidResult,
@@ -24,6 +25,7 @@ export interface PspClientOptions {
 
 const CreatedPayment = z.object({ id: z.string().min(1), paymentUrl: z.url() });
 const ErrorBody = z.object({ error: z.object({ code: z.string() }) });
+const AcceptedPayout = z.object({ id: z.string().min(1) });
 
 interface PspHttpResponse {
   status: number;
@@ -98,6 +100,19 @@ export class PspHttpClient implements PspGateway {
     return ok(response.status)
       ? { status: 'refunded' }
       : { status: 'rejected', reason: reason(response) };
+  }
+
+  async payout(payoutId: string, sellerId: string, amountMinor: number): Promise<PayoutResult> {
+    const response = await this.post('/v1/payouts', payoutId, {
+      merchantReference: payoutId,
+      sellerId,
+      amountMinor,
+    });
+    const accepted = AcceptedPayout.safeParse(response.body);
+    if (ok(response.status) && accepted.success) {
+      return { status: 'accepted', providerPayoutId: accepted.data.id };
+    }
+    return { status: 'rejected', reason: reason(response) };
   }
 
   private async post(path: string, idempotencyKey: string, body?: unknown) {

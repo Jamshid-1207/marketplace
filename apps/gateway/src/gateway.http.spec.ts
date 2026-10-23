@@ -148,6 +148,8 @@ describe('gateway: сбои и настройки', () => {
     expect(erp.received.at(-1)?.url).toBe('/seller/warehouses');
     await http().put('/api/seller/stock/sku-1/threshold').set('Authorization', token).expect(200);
     expect(erp.received.at(-1)?.url).toBe('/seller/stock/sku-1/threshold');
+    await http().get('/api/seller/sales/summary').set('Authorization', token).expect(200);
+    expect(erp.received.at(-1)?.url).toBe('/seller/sales/summary');
     expect((await http().get('/api/seller/warehouses')).status).toBe(401);
     await app.close();
     await Promise.all([order, erp].map((s) => new Promise((r) => s.server.close(r))));

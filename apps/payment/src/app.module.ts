@@ -1,4 +1,5 @@
 import { Module, type DynamicModule } from '@nestjs/common';
+import { AuthModule } from '@repo/auth';
 import { ObservabilityModule } from '@repo/observability';
 import { ConfigModule, SERVICE_NAME, type Config, type RunMode } from './config';
 import { InfrastructureModule, readinessChecks } from './infrastructure/infrastructure.module';
@@ -19,6 +20,8 @@ export class AppModule {
           imports: [InfrastructureModule],
         }),
         InfrastructureModule,
+        // JWT проверяется в каждом сервисе, а не только в gateway (ADR-0006, п. 4)
+        AuthModule.forRoot({ jwksUrl: config.JWKS_URL }),
         PaymentModule,
       ],
     };

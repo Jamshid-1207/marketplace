@@ -16,6 +16,11 @@ describe('loadConfig', () => {
       KAFKA_FROM_BEGINNING: false,
       PSP_API_URL: 'http://localhost:4000',
       PSP_TIMEOUT_MS: 5_000,
+      JWKS_URL: 'http://localhost:3000/.well-known/jwks.json',
+      SELLER_HOLD_MS: 604_800_000,
+      MIN_PAYOUT_MINOR: 10_000_000,
+      MONEY_TICK_MS: 5_000,
+      RECONCILE_INTERVAL_MS: 86_400_000,
       LOG_LEVEL: 'info',
       LOG_PRETTY: false,
     });

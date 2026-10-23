@@ -9,7 +9,7 @@ import request from 'supertest';
 import { AuthModule } from './auth.module';
 import { TOKEN_AUDIENCE, TOKEN_ISSUER, type AccessScope, type Claims } from './claims';
 import { DevTokenIssuer } from './dev-issuer';
-import { BuyerScope, CurrentClaims, Public } from './guard';
+import { AdminScope, BuyerScope, CurrentClaims, Public } from './guard';
 import { InvalidTokenError, JwtVerifier } from './verifier';
 
 /** JWKS по HTTP, как его отдаёт gateway: проверяется настоящий путь через сеть. */
@@ -125,6 +125,11 @@ class ProbeController {
     return scope;
   }
 
+  @Get('admin')
+  admin(@AdminScope() scope: AccessScope) {
+    return scope;
+  }
+
   @Public()
   @Get('open')
   open() {
@@ -188,6 +193,12 @@ describe('AuthModule: guard и области доступа', () => {
   it('область покупателя без роли buyer — 403', async () => {
     const admin = await issuer.issue({ sub: newId(), roles: ['admin'], scopes: [] });
     expect((await get('/my-orders', admin)).status).toBe(403);
+  });
+
+  it('область платформы — только у роли admin', async () => {
+    const admin = await issuer.issue({ sub: newId(), roles: ['buyer', 'admin'], scopes: [] });
+    expect((await get('/admin', admin)).body).toEqual({ kind: 'platform' });
+    expect((await get('/admin', await issuer.issue(buyer))).status).toBe(403);
   });
 
   it('заголовки с идентичностью игнорируются', async () => {

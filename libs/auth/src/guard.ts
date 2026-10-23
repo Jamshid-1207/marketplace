@@ -4,6 +4,7 @@ import {
   Injectable,
   SetMetadata,
   UnauthorizedException,
+  UseGuards,
   type CanActivate,
   type ExecutionContext,
 } from '@nestjs/common';
@@ -60,6 +61,15 @@ export function buyerScope(claims: Claims): AccessScope & { kind: 'buyer' } {
   return { kind: 'buyer', userId: claims.sub };
 }
 
+/**
+ * Область платформы (ADR-0006, п. 5) — только роль `admin`. Из запроса продавца или покупателя
+ * её не построить.
+ */
+export function adminScope(claims: Claims): AccessScope & { kind: 'platform' } {
+  if (!claims.roles.includes('admin')) throw new ForbiddenException();
+  return { kind: 'platform' };
+}
+
 /** Проверенные claims текущего запроса. */
 export const CurrentClaims = createParamDecorator((_: unknown, context: ExecutionContext) =>
   claimsOf(context),
@@ -69,3 +79,19 @@ export const CurrentClaims = createParamDecorator((_: unknown, context: Executio
 export const BuyerScope = createParamDecorator((_: unknown, context: ExecutionContext) =>
   buyerScope(claimsOf(context)),
 );
+
+/** Эндпоинт админки платформы: без роли `admin` — `403`. */
+export const AdminScope = createParamDecorator((_: unknown, context: ExecutionContext) =>
+  adminScope(claimsOf(context)),
+);
+
+@Injectable()
+export class AdminGuard implements CanActivate {
+  canActivate(context: ExecutionContext): boolean {
+    adminScope(claimsOf(context));
+    return true;
+  }
+}
+
+/** Эндпоинт админки платформы целиком: без роли `admin` — `403`. */
+export const Admin = () => UseGuards(AdminGuard);

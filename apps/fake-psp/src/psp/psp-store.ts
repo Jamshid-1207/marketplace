@@ -24,13 +24,30 @@ export interface PspPayment {
   refundedMinor: number;
 }
 
-export type PspEventType = 'payment.authorized' | 'payment.expired';
+export type PspEventType = 'payment.authorized' | 'payment.expired' | PayoutEventType;
+export type PayoutEventType = 'payout.paid' | 'payout.failed';
 
 export interface PspEvent {
   id: string;
   type: PspEventType;
   created: number;
-  data: { paymentId: string; merchantReference: string; status: PspStatus };
+  data:
+    | { paymentId: string; merchantReference: string; status: PspStatus }
+    | { payoutId: string; merchantReference: string; status: PayoutStatus; reason?: string };
+}
+
+/** Выплата продавцу (SD-04, п. 6): результат приходит webhook'ом через `payoutDelayMs`. */
+export type PayoutStatus = 'pending' | 'paid' | 'failed';
+
+export interface PspPayout {
+  id: string;
+  merchantReference: string;
+  sellerId: string;
+  amountMinor: number;
+  status: PayoutStatus;
+  /** Итог, заданный режимом тестов в момент создания. */
+  outcome: 'paid' | 'failed';
+  settleAt: number;
 }
 
 /** Ответ API: статус HTTP и тело — его же провайдер вернёт на повтор с тем же ключом. */
@@ -42,6 +59,8 @@ export interface PspResponse {
 export interface PspOptions {
   publicUrl: string;
   paymentTtlMs: number;
+  /** Через сколько провайдер сообщает итог выплаты. */
+  payoutDelayMs?: number;
   now?: () => number;
   /** Подписчик на события: отправка webhook. */
   onEvent?: (event: PspEvent) => void;
@@ -56,6 +75,9 @@ const error = (status: number, code: string, message: string): PspResponse => ({
 
 export class PspStore {
   private readonly payments = new Map<string, PspPayment>();
+  private readonly payouts = new Map<string, PspPayout>();
+  /** Тестовый режим: следующие выплаты отказывают. */
+  failPayouts = false;
   private readonly idempotency = new Map<string, { requestHash: string; response: PspResponse }>();
   private readonly now: () => number;
 
@@ -186,6 +208,54 @@ export class PspStore {
     return { status: 200, body: view(payment) };
   }
 
+  getPayout(id: string): PspPayout | undefined {
+    return this.payouts.get(id);
+  }
+
+  listPayouts(merchantReference?: string): PspPayout[] {
+    return [...this.payouts.values()].filter(
+      (p) => merchantReference === undefined || p.merchantReference === merchantReference,
+    );
+  }
+
+  createPayout(input: {
+    merchantReference: string;
+    sellerId: string;
+    amountMinor: number;
+  }): PspResponse {
+    const payout: PspPayout = {
+      id: newPspId('po'),
+      ...input,
+      status: 'pending',
+      outcome: this.failPayouts ? 'failed' : 'paid',
+      settleAt: this.now() + (this.options.payoutDelayMs ?? 1_000),
+    };
+    this.payouts.set(payout.id, payout);
+    return { status: 201, body: payoutView(payout) };
+  }
+
+  /** Итог созревших выплат и их webhook. Вызывается периодически. */
+  settleDuePayouts(): number {
+    let settled = 0;
+    for (const payout of this.payouts.values()) {
+      if (payout.status !== 'pending' || payout.settleAt > this.now()) continue;
+      payout.status = payout.outcome;
+      this.options.onEvent?.({
+        id: newPspId('evt'),
+        type: payout.status === 'paid' ? 'payout.paid' : 'payout.failed',
+        created: Math.floor(this.now() / 1000),
+        data: {
+          payoutId: payout.id,
+          merchantReference: payout.merchantReference,
+          status: payout.status,
+          ...(payout.status === 'failed' ? { reason: 'bank_rejected' } : {}),
+        },
+      });
+      settled++;
+    }
+    return settled;
+  }
+
   private emit(type: PspEventType, payment: PspPayment): void {
     this.options.onEvent?.({
       id: newPspId('evt'),
@@ -198,6 +268,11 @@ export class PspStore {
       },
     });
   }
+}
+
+export function payoutView(payout: PspPayout) {
+  const { id, merchantReference, sellerId, amountMinor, status } = payout;
+  return { id, merchantReference, sellerId, amountMinor, status };
 }
 
 /** То, что провайдер отдаёт клиенту: без внутренних счётчиков. */

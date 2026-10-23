@@ -17,6 +17,8 @@ export const ConfigSchema = z.object({
     .int()
     .positive()
     .default(30 * 60_000),
+  /** Через сколько провайдер сообщает итог выплаты (SD-04, п. 6). */
+  PSP_PAYOUT_DELAY_MS: z.coerce.number().int().positive().default(2_000),
   /** Сколько провайдер повторяет недоставленный webhook. */
   PSP_WEBHOOK_RETRY_FOR_MS: z.coerce
     .number()

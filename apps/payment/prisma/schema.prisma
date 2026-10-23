@@ -59,9 +59,12 @@ model Payment {
 
 /// Разбивка списания по под-заказам (SD-03, п. 7): источник суммы возврата
 model PaymentSubOrder {
-  subOrderId  String @id @map("sub_order_id") @db.Uuid
-  paymentId   String @map("payment_id") @db.Uuid
-  amountMinor BigInt @map("amount_minor")
+  subOrderId  String  @id @map("sub_order_id") @db.Uuid
+  paymentId   String  @map("payment_id") @db.Uuid
+  amountMinor BigInt  @map("amount_minor")
+  /// продавец и позиции с путём категории: по ним считается комиссия (SD-04, п. 5)
+  sellerId    String? @map("seller_id") @db.Uuid
+  lines       Json    @default("[]")
 
   @@index([paymentId], map: "payment_sub_orders_payment")
   @@map("payment_sub_orders")
@@ -80,4 +83,117 @@ model Refund {
 
   @@index([paymentId], map: "refunds_payment")
   @@map("refunds")
+}
+
+/// Проводка (ADR-0007, п. 7): одна на операцию — повтор не удваивает деньги
+model LedgerTransaction {
+  id        String   @id @db.Uuid
+  /// capture, hold_release, refund_requested, refund_completed, refund_failed, payout_*
+  kind      String
+  sourceId  String   @map("source_id")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  entries LedgerEntry[]
+
+  @@unique([kind, sourceId], map: "ledger_transactions_kind_source")
+  @@map("ledger_transactions")
+}
+
+/// Запись проводки: дебет > 0, кредит < 0. Журнал только дополняется (триггеры в миграции)
+model LedgerEntry {
+  id            BigInt  @id @default(autoincrement())
+  transactionId String  @map("transaction_id") @db.Uuid
+  account       String
+  amountMinor   BigInt  @map("amount_minor")
+  sellerId      String? @map("seller_id") @db.Uuid
+  subOrderId    String? @map("sub_order_id") @db.Uuid
+
+  transaction LedgerTransaction @relation(fields: [transactionId], references: [id])
+
+  @@index([account, id], map: "ledger_entries_account")
+  @@index([sellerId, id], map: "ledger_entries_seller")
+  @@index([transactionId], map: "ledger_entries_transaction")
+  @@map("ledger_entries")
+}
+
+/// Баланс счёта = сумма его записей; долг продавцу = −balance
+model AccountBalance {
+  account      String @id
+  balanceMinor BigInt @default(0) @map("balance_minor")
+
+  @@map("account_balances")
+}
+
+/// Read-model категорий (ADR-0007, п. 4): до этапа 5 — seed, потом — события category.*
+model Category {
+  categoryId String  @id @map("category_id") @db.Uuid
+  parentId   String? @map("parent_id") @db.Uuid
+  name       String
+
+  @@map("categories")
+}
+
+/// Ставка комиссии в б. п.; '*' — по умолчанию
+model CommissionRate {
+  categoryId String   @id @map("category_id")
+  rateBp     Int      @map("rate_bp")
+  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("commission_rates")
+}
+
+/// Расчёт с продавцом по под-заказу (ADR-0007, п. 5)
+model Settlement {
+  subOrderId      String    @id @map("sub_order_id") @db.Uuid
+  orderId         String    @map("order_id") @db.Uuid
+  paymentId       String    @map("payment_id") @db.Uuid
+  sellerId        String    @map("seller_id") @db.Uuid
+  grossMinor      BigInt    @map("gross_minor")
+  commissionMinor BigInt    @map("commission_minor")
+  /// PENDING, HOLD, AVAILABLE, REFUNDED
+  status          String
+  releaseAt       DateTime? @map("release_at") @db.Timestamptz(6)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  lines SettlementLine[]
+
+  @@index([status, releaseAt], map: "settlements_due")
+  @@index([sellerId, status], map: "settlements_seller")
+  @@map("settlements")
+}
+
+/// Позиция расчёта со ставкой на момент списания
+model SettlementLine {
+  subOrderId      String @map("sub_order_id") @db.Uuid
+  skuId           String @map("sku_id") @db.Uuid
+  amountMinor     BigInt @map("amount_minor")
+  rateBp          Int    @map("rate_bp")
+  commissionMinor BigInt @map("commission_minor")
+
+  settlement Settlement @relation(fields: [subOrderId], references: [subOrderId])
+
+  @@id([subOrderId, skuId])
+  @@map("settlement_lines")
+}
+
+/// Выплата продавцу (ADR-0007, п. 6)
+model Payout {
+  payoutId         String   @id @map("payout_id") @db.Uuid
+  sellerId         String   @map("seller_id") @db.Uuid
+  amountMinor      BigInt   @map("amount_minor")
+  /// REQUESTED, SENDING, SENT, PAID, FAILED
+  status           String
+  providerPayoutId String?  @unique @map("provider_payout_id")
+  failureReason    String?  @map("failure_reason")
+  /// номер последнего события выплаты — aggregateVersion
+  version          Int      @default(0)
+  correlationId    String   @map("correlation_id")
+  traceHeaders     Json     @default("{}") @map("trace_headers")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([sellerId, createdAt(sort: Desc)], map: "payouts_seller")
+  @@index([status], map: "payouts_status")
+  @@map("payouts")
 }

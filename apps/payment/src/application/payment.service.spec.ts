@@ -1,96 +1,11 @@
-import { money, type AnyMessageDefinition, type SubOrderSummary } from '@repo/contracts';
+import { money, type SubOrderSummary } from '@repo/contracts';
 import { PermanentError } from '@repo/kafka';
 import { currentContext, runWithContext } from '@repo/observability';
-import type { Payment } from '../domain/payment';
 import { PspHttpClient } from '../infrastructure/psp/psp-client';
 import { PspDouble } from '../testing/psp-double';
 import { PaymentService, providerEventUuid } from './payment.service';
-import type { PaymentRepository, PaymentTx, Refund } from './ports';
-
-interface Published {
-  type: string;
-  payload: Record<string, unknown>;
-  aggregateVersion: number;
-}
-
-/** Репозиторий в памяти: транзакция откатывается при ошибке, как в базе. */
-class InMemoryPayments implements PaymentRepository {
-  rows = new Map<string, Payment>();
-  events: Published[] = [];
-  processed = new Set<string>();
-  subOrders = new Map<string, { paymentId: string; amountMinor: number }>();
-  refunds = new Map<string, Refund>();
-  private transactions = 0;
-  private failAt = 0;
-
-  /** Следующая команда упадёт после вызова провайдера, перед транзакцией 2. */
-  crashBeforeCompletion(): void {
-    this.failAt = this.transactions + 2;
-  }
-
-  async transaction<T>(fn: (tx: PaymentTx) => Promise<T>): Promise<T> {
-    const snapshot = {
-      rows: new Map([...this.rows].map(([id, p]) => [id, structuredClone(p)])),
-      events: [...this.events],
-      processed: new Set(this.processed),
-      subOrders: new Map(this.subOrders),
-      refunds: new Map([...this.refunds].map(([id, r]) => [id, structuredClone(r)])),
-    };
-    if (++this.transactions === this.failAt) {
-      throw new Error('payment упал между вызовом провайдера и транзакцией 2');
-    }
-    try {
-      return await fn(this.tx());
-    } catch (error) {
-      Object.assign(this, snapshot);
-      throw error;
-    }
-  }
-
-  async findById(paymentId: string) {
-    return structuredClone(this.rows.get(paymentId) ?? null);
-  }
-
-  byOrder(orderId: string): Payment {
-    return [...this.rows.values()].find((p) => p.orderId === orderId) as Payment;
-  }
-
-  private tx(): PaymentTx {
-    return {
-      lockByOrderId: async (orderId) => structuredClone(this.byOrder(orderId) ?? null),
-      lockById: async (id) => structuredClone(this.rows.get(id) ?? null),
-      insert: async (p) => void this.rows.set(p.paymentId, structuredClone(p)),
-      update: async (p) => void this.rows.set(p.paymentId, structuredClone(p)),
-      publish: async (definition: AnyMessageDefinition, payload, aggregate) =>
-        void this.events.push({
-          type: definition.type,
-          payload: payload as Record<string, unknown>,
-          aggregateVersion: aggregate.aggregateVersion,
-        }),
-      saveSubOrderAmounts: async (paymentId, amounts) => {
-        for (const { subOrderId, amount } of amounts) {
-          if (!this.subOrders.has(subOrderId)) {
-            this.subOrders.set(subOrderId, { paymentId, amountMinor: amount.amountMinor });
-          }
-        }
-      },
-      subOrderAmount: async (paymentId, subOrderId) => {
-        const row = this.subOrders.get(subOrderId);
-        return row?.paymentId === paymentId ? money(row.amountMinor) : null;
-      },
-      lockRefund: async (subOrderId) => structuredClone(this.refunds.get(subOrderId) ?? null),
-      saveRefund: async (refund) =>
-        void this.refunds.set(refund.subOrderId, structuredClone(refund)),
-      once: async (handler, eventId, fn) => {
-        const key = `${handler}:${eventId}`;
-        if (this.processed.has(key)) return false;
-        this.processed.add(key);
-        await fn();
-        return true;
-      },
-    };
-  }
-}
+import { ACCOUNTS } from '../domain/ledger';
+import { InMemoryPayments } from '../testing/in-memory-payments';
 
 const ORDER = '01930000-0000-7000-8000-00000000b001';
 const amount = money(1_500_000);
@@ -347,6 +262,66 @@ describe('PaymentService', () => {
     await expect(refund('01930000-0000-7000-8000-00000000cfff')).rejects.toBeInstanceOf(
       PermanentError,
     );
+  });
+
+  describe('деньги (SD-04, п. 5)', () => {
+    const [subA, subB] = subOrders;
+    const debt = (account: string) => 0 - (repo.balances.get(account) ?? 0);
+
+    it('списание: расчёт и сбалансированная проводка по каждому под-заказу, комиссия по ставке', async () => {
+      await authorized();
+      await capture();
+      expect([...repo.postings.keys()].sort()).toEqual(
+        [`capture:${subA.subOrderId}`, `capture:${subB.subOrderId}`].sort(),
+      );
+      expect(repo.settlements.get(subA.subOrderId)).toMatchObject({
+        status: 'PENDING',
+        grossMinor: 1_000_000,
+        commissionMinor: 100_000, // 10% по умолчанию
+      });
+      expect(debt(ACCOUNTS.pending(subA.sellerId))).toBe(900_000);
+      expect(debt(ACCOUNTS.commissionDeferred)).toBe(150_000);
+      expect(repo.balances.get(ACCOUNTS.cash)).toBe(1_500_000);
+    });
+
+    it('ставка категории глубже — по ней; повтор списания — без второй проводки', async () => {
+      repo.rates.set(subA.lines[0].categoryPath[0], 500);
+      await authorized();
+      await capture();
+      await capture();
+      expect(repo.settlements.get(subA.subOrderId)?.commissionMinor).toBe(50_000);
+      expect(repo.postings.size).toBe(2);
+      expect(repo.balances.get(ACCOUNTS.cash)).toBe(1_500_000);
+    });
+
+    it('возврат под-заказа: долг продавцу и комиссия уходят покупателю, второй не затронут', async () => {
+      await authorized();
+      await capture();
+      await refund();
+      expect(repo.settlements.get(subB.subOrderId)?.status).toBe('REFUNDED');
+      expect(debt(ACCOUNTS.pending(subB.sellerId))).toBe(0);
+      expect(debt(ACCOUNTS.pending(subA.sellerId))).toBe(900_000);
+      expect(debt(ACCOUNTS.refundsInTransit)).toBe(0);
+      expect(repo.balances.get(ACCOUNTS.cash)).toBe(1_000_000);
+    });
+
+    it('провайдер отказал в возврате — обратная проводка, расчёт снова в ожидании', async () => {
+      await authorized();
+      await capture();
+      psp.byReference(repo.byOrder(ORDER).paymentId).refundedMinor = 1_500_000; // всё уже «возвращено»
+      await refund();
+      expect(repo.postings.has(`refund_failed:${subB.subOrderId}`)).toBe(true);
+      expect(repo.settlements.get(subB.subOrderId)?.status).toBe('PENDING');
+      expect(debt(ACCOUNTS.pending(subB.sellerId))).toBe(450_000);
+      expect(debt(ACCOUNTS.refundsInTransit)).toBe(0);
+    });
+
+    it('сумма всех балансов — ноль', async () => {
+      await authorized();
+      await capture();
+      await refund();
+      expect([...repo.balances.values()].reduce((a, b) => a + b, 0)).toBe(0);
+    });
   });
 
   it('id события провайдера → стабильный UUID', () => {
