@@ -1,15 +1,31 @@
+import { CommitStockV1, ReleaseStockV1, ReserveStockV1 } from './commands/erp/stock-commands.v1';
 import { CancelPaymentV1 } from './commands/payment/cancel-payment.v1';
 import { CapturePaymentV1 } from './commands/payment/capture-payment.v1';
 import { CreatePaymentV1 } from './commands/payment/create-payment.v1';
+import { RefundPaymentV1 } from './commands/payment/refund-payment.v1';
+import {
+  StockCommitFailedV1,
+  StockCommittedV1,
+  StockLowV1,
+  StockRejectedV1,
+  StockReleasedV1,
+  StockReservedV1,
+} from './events/erp/stock-events.v1';
 import { OrderCancelledV1 } from './events/order/order-cancelled.v1';
 import { OrderConfirmedV1 } from './events/order/order-confirmed.v1';
 import { OrderCreatedV1 } from './events/order/order-created.v1';
+import {
+  SubOrderCancelledV1,
+  SubOrderDeliveredV1,
+  SubOrderShippedV1,
+} from './events/order/sub-order-events.v1';
 import { PaymentAuthorizedV1 } from './events/payment/payment-authorized.v1';
 import { PaymentCancelledV1 } from './events/payment/payment-cancelled.v1';
 import { PaymentCaptureFailedV1 } from './events/payment/payment-capture-failed.v1';
 import { PaymentCapturedV1 } from './events/payment/payment-captured.v1';
 import { PaymentCreatedV1 } from './events/payment/payment-created.v1';
 import { PaymentFailedV1 } from './events/payment/payment-failed.v1';
+import { PaymentRefundedV1 } from './events/payment/payment-refunded.v1';
 import { SmokePingedV1 } from './events/smoke/smoke-pinged.v1';
 import { MessageRegistry } from './registry';
 
@@ -32,4 +48,19 @@ export const messages = new MessageRegistry([
   OrderCreatedV1,
   OrderConfirmedV1,
   OrderCancelledV1,
+  // склад и жизнь под-заказа (SD-03, п. 4)
+  ReserveStockV1,
+  CommitStockV1,
+  ReleaseStockV1,
+  RefundPaymentV1,
+  StockReservedV1,
+  StockRejectedV1,
+  StockCommittedV1,
+  StockCommitFailedV1,
+  StockReleasedV1,
+  StockLowV1,
+  SubOrderShippedV1,
+  SubOrderDeliveredV1,
+  SubOrderCancelledV1,
+  PaymentRefundedV1,
 ]);

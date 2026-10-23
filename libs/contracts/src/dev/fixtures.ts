@@ -4,7 +4,7 @@
  * Удаляется на этапе 5 вместе с заглушкой.
  */
 
-// UUID v7 с читаемым хвостом: a… — магазин A, b… — магазин B, c… — категории
+// UUID v7 с читаемым хвостом: a… — магазин A, b… — магазин B, c… — категории; …2xx — склады
 const id = (tail: string) => `01930000-0000-7000-8000-${tail.padStart(12, '0')}`;
 
 export const DEV_SELLERS = {
@@ -53,6 +53,14 @@ export const DEV_USERS: readonly DevUser[] = [
     roles: ['buyer', 'seller'],
     sellerId: DEV_SELLERS.B,
     scopes: OWNER_SCOPES,
+  },
+  // сотрудник магазина A только с правом заказов: проверки 403 в кабинете (ADR-0006, п. 8)
+  {
+    login: 'manager-a',
+    userId: id('a002'),
+    roles: ['buyer', 'seller_manager'],
+    sellerId: DEV_SELLERS.A,
+    scopes: ['orders'],
   },
   { login: 'admin', userId: id('ad01'), roles: ['buyer', 'admin'], scopes: [] },
 ];
@@ -108,6 +116,38 @@ export const DEV_CATALOG: readonly DevSku[] = [
     categoryPath: [DEV_CATEGORIES.home],
     active: false,
   },
+];
+
+export interface DevWarehouse {
+  warehouseId: string;
+  sellerId: string;
+  name: string;
+  /** Меньше — раньше: резерв берётся с первого склада, где хватает товара (ADR-0005, п. 8). */
+  priority: number;
+}
+
+/** Склады seed-продавцов (SD-03, п. 4): у магазина A — основной и запасной. */
+export const DEV_WAREHOUSES: readonly DevWarehouse[] = [
+  { warehouseId: id('a201'), sellerId: DEV_SELLERS.A, name: 'Ташкент, основной', priority: 1 },
+  { warehouseId: id('a202'), sellerId: DEV_SELLERS.A, name: 'Самарканд, запасной', priority: 2 },
+  { warehouseId: id('b201'), sellerId: DEV_SELLERS.B, name: 'Ташкент', priority: 1 },
+];
+
+export interface DevStock {
+  warehouseId: string;
+  skuId: string;
+  onHand: number;
+}
+
+const sku = (tail: string) => id(tail);
+
+/** Начальные остатки seed-каталога: хватает на e2e, у снятого с продажи SKU — ноль. */
+export const DEV_STOCK: readonly DevStock[] = [
+  { warehouseId: id('a201'), skuId: sku('a101'), onHand: 1_000 },
+  { warehouseId: id('a201'), skuId: sku('a102'), onHand: 1_000 },
+  { warehouseId: id('a202'), skuId: sku('a102'), onHand: 100 },
+  { warehouseId: id('b201'), skuId: sku('b101'), onHand: 1_000 },
+  { warehouseId: id('b201'), skuId: sku('b102'), onHand: 1_000 },
 ];
 
 export function devUser(login: string): DevUser | undefined {

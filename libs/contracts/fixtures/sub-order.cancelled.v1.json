@@ -1,0 +1,36 @@
+{
+  "eventId": "0192b4c6-0000-7000-8000-00000000e112",
+  "type": "sub-order.cancelled",
+  "version": 1,
+  "aggregateType": "order",
+  "aggregateId": "0192b4c6-0000-7000-8000-000000000d01",
+  "aggregateVersion": 3,
+  "occurredAt": "2026-10-23T10:00:00.000Z",
+  "correlationId": "req-checkout-1",
+  "causationId": "0192b4c6-0000-7000-8000-00000000e011",
+  "payload": {
+    "orderId": "0192b4c6-0000-7000-8000-000000000d01",
+    "subOrderId": "0192b4c6-0000-7000-8000-000000005a01",
+    "sellerId": "0192b4c6-0000-7000-8000-00000000a000",
+    "buyerId": "0192b4c6-0000-7000-8000-000000000b01",
+    "amount": {
+      "amountMinor": 299000000,
+      "currency": "UZS"
+    },
+    "lines": [
+      {
+        "skuId": "0192b4c6-0000-7000-8000-00000000a101",
+        "qty": 1,
+        "unitPrice": {
+          "amountMinor": 299000000,
+          "currency": "UZS"
+        },
+        "categoryPath": [
+          "0192b4c6-0000-7000-8000-00000000c001",
+          "0192b4c6-0000-7000-8000-00000000c002"
+        ]
+      }
+    ],
+    "cancelledBy": "seller"
+  }
+}

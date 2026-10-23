@@ -1,6 +1,13 @@
 import { CreateOrderRequest, OrderView } from './api/order/orders';
 import { CapturePaymentV1 } from './commands/payment/capture-payment.v1';
-import { DEV_CATALOG, DEV_SELLERS, DEV_USERS, devUser } from './dev/fixtures';
+import {
+  DEV_CATALOG,
+  DEV_SELLERS,
+  DEV_STOCK,
+  DEV_USERS,
+  DEV_WAREHOUSES,
+  devUser,
+} from './dev/fixtures';
 import { messages } from './messages';
 import { PositiveMoneySchema } from './money';
 
@@ -68,18 +75,30 @@ describe('PositiveMoneySchema', () => {
 });
 
 describe('сообщения оформления', () => {
-  it('команды — в топике payment, ключ orderId: команды заказа идут по порядку (ADR-0005, п. 3)', () => {
+  it('команды — в топике получателя, ключ orderId: команды заказа идут по порядку (ADR-0005, п. 3)', () => {
     const commands = messages.definitions().filter((d) => d.kind === 'command');
-    expect(commands.map((d) => d.type).sort()).toEqual([
-      'CancelPayment',
-      'CapturePayment',
-      'CreatePayment',
-    ]);
+    const topics = Object.fromEntries(commands.map((d) => [d.type, d.topic]));
+    expect(topics).toEqual({
+      CreatePayment: 'payment.commands',
+      CapturePayment: 'payment.commands',
+      CancelPayment: 'payment.commands',
+      RefundPayment: 'payment.commands',
+      ReserveStock: 'erp.commands',
+      CommitStock: 'erp.commands',
+      ReleaseStock: 'erp.commands',
+    });
     for (const command of commands) {
-      expect(command.topic).toBe('payment.commands');
       expect(command.aggregateType).toBe('order');
+      expect(command.key({ orderId: 'o-1', subOrders: [], lines: [] })).toBe('o-1');
     }
     expect(CapturePaymentV1.key({ orderId: 'o-1', subOrders: [] })).toBe('o-1');
+  });
+
+  it('ответы erp — ключ orderId; stock.low — ключ skuId', () => {
+    for (const definition of messages.definitions().filter((d) => d.topic === 'erp.events')) {
+      const payload = { orderId: 'order', skuId: 'sku' };
+      expect(definition.key(payload)).toBe(definition.type === 'stock.low' ? 'sku' : 'order');
+    }
   });
 
   it('события платежа — ключ paymentId, события заказа — ключ orderId', () => {
@@ -113,5 +132,23 @@ describe('тестовые данные (до этапа 5)', () => {
       expect(Number.isSafeInteger(item.priceMinor) && item.priceMinor > 0).toBe(true);
       expect(item.categoryPath.length).toBeGreaterThan(0);
     }
+  });
+});
+
+describe('seed складов и остатков', () => {
+  it('остаток лежит на складе продавца своего SKU', () => {
+    for (const stock of DEV_STOCK) {
+      const warehouse = DEV_WAREHOUSES.find((w) => w.warehouseId === stock.warehouseId);
+      const sku = DEV_CATALOG.find((s) => s.skuId === stock.skuId);
+      expect(warehouse?.sellerId).toBe(sku?.sellerId);
+    }
+  });
+
+  it('у сотрудника manager-a только право заказов магазина A', () => {
+    expect(devUser('manager-a')).toMatchObject({
+      roles: ['buyer', 'seller_manager'],
+      sellerId: DEV_SELLERS.A,
+      scopes: ['orders'],
+    });
   });
 });

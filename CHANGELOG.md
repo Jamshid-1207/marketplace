@@ -5,7 +5,15 @@
 
 ## [Unreleased] · Этап 3: склад
 ### Added
-- `docs/system-design/03-warehouse.md`: дизайн этапа 3 на согласовании — erp (склады, остатки, резервы с TTL, реестр продаж, `stock.low`, кабинет), полная saga с `RESERVING` и `COMMITTING`, отгрузка, доставка и отмена под-заказа с возвратом, `@SellerScope` и тест изоляции, 15 сценариев готовности.
+- **Шаг 2: `@SellerScope(permission)`** в `libs/auth`: область продавца из токена, владелец — все права магазина, сотрудник — только выданные, иначе `403`; `@CurrentSeller()`; `sellerEndpoints(app)` — список эндпоинтов кабинета из метаданных для теста изоляции (ADR-0006, п. 8).
+- **Шаг 1: контракты склада и под-заказа** (`libs/contracts`).
+  - Команды `erp.commands`: `ReserveStock` (позиции с `subOrderId`, `sellerId`, `skuId`), `CommitStock`, `ReleaseStock` (`subOrderId` необязателен); `RefundPayment` в `payment.commands`.
+  - События `erp.events`: `stock.reserved`, `stock.rejected`, `stock.committed`, `stock.commit-failed`, `stock.released` (ключ `orderId`), `stock.low` (ключ `skuId`). `sub-order.shipped`, `sub-order.delivered`, `sub-order.cancelled` — с позициями и суммой; `payment.refunded`.
+  - Фикстуры 14 новых сообщений; топики `erp.commands`, `erp.events`; seed складов и остатков, сотрудник `manager-a` с одним правом `orders`.
+- `docs/system-design/03-warehouse.md`: дизайн этапа 3 — erp (склады, остатки, резервы с TTL, реестр продаж, `stock.low`, кабинет), полная saga с `RESERVING` и `COMMITTING`, отгрузка, доставка и отмена под-заказа с возвратом, `@SellerScope` и тест изоляции, 15 сценариев готовности.
+
+### Decided
+- SD-03 утверждён: возврат при отмене под-заказа — на этапе 3 без проводок (проводки — этап 4); реестр продаж erp — на этапе 3; `stock.level-changed` — на этапе 5; раздельные пути покупателя и продавца для под-заказов; TTL резерва и дедлайны в e2e — секунды.
 
 ## [0.3.0] - 2026-10-23 · Этап 2: оформление без склада ✅
 Критерии SD-02 выполнены: сценарии 1–3 и 5–12 проходят в новом CI job `e2e` на compose-стенде, сценарий 4 — в интеграционных тестах payment. Все пять job'ов CI зелёные: `check`, `integration`, `infra-smoke`, `generator-smoke`, `e2e`.
