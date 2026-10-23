@@ -102,7 +102,13 @@ export function changeOffer(
 ): ProductChange {
   editable(product);
   if (!product.skus.some((s) => s.skuId === skuId)) throw new ProductRuleError('SKU нет в товаре');
-  const skus = product.skus.map((s) => (s.skuId === skuId ? { ...s, ...offer } : s));
+  // поле без значения не меняется: `{ active: undefined }` не должно стереть активность
+  const { priceMinor, active } = offer;
+  const skus = product.skus.map((s) =>
+    s.skuId === skuId
+      ? { ...s, priceMinor: priceMinor ?? s.priceMinor, active: active ?? s.active }
+      : s,
+  );
   const next = { ...product, skus };
   return changed(
     next,

@@ -102,6 +102,13 @@ describe('товар: переходы модерации (SD-05, п. 6.3)', () 
     expect(effect).toEqual({ kind: 'published' });
   });
 
+  it('незаданное поле предложения не меняется', () => {
+    const p = product('published');
+    const offer = { priceMinor: 90_00, active: undefined };
+    const { product: next } = changeOffer(p, p.skus[0].skuId, offer, true);
+    expect(next.skus[0]).toMatchObject({ priceMinor: 90_00, active: true });
+  });
+
   it('цена у заблокированного магазина — без события', () => {
     const p = product('published');
     expect(changeOffer(p, p.skus[0].skuId, { active: false }, false).effect).toBeNull();
