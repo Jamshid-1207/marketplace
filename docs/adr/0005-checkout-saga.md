@@ -1,6 +1,6 @@
 # ADR-0005: Checkout saga — оркестрация в order-сервисе
 
-**Статус:** Принято · **Дата:** 2026-10-23 · **Ревизия:** 4
+**Статус:** Принято · **Дата:** 2026-10-23 · **Ревизия:** 5
 
 ## Контекст
 
@@ -303,9 +303,12 @@ CREATE INDEX sub_orders_seller ON sub_orders (seller_id, status);
 
 | Запрос                         | Кто                     | Переход                 |
 | ------------------------------ | ----------------------- | ----------------------- |
-| `POST /sub-orders/:id/ship`    | продавец                | `CONFIRMED → SHIPPED`   |
-| `POST /sub-orders/:id/deliver` | продавец                | `SHIPPED → DELIVERED`   |
-| `POST /sub-orders/:id/cancel`  | покупатель или продавец | `CONFIRMED → CANCELLED` |
+| `POST /seller/sub-orders/:id/ship`             | продавец   | `CONFIRMED → SHIPPED`   |
+| `POST /seller/sub-orders/:id/deliver`          | продавец   | `SHIPPED → DELIVERED`   |
+| `POST /seller/sub-orders/:id/cancel`           | продавец   | `CONFIRMED → CANCELLED` |
+| `POST /orders/:orderId/sub-orders/:id/cancel`  | покупатель | `CONFIRMED → CANCELLED` |
+
+Пути покупателя и продавца раздельные (SD-03, решение 4): у владельца магазина есть и роль `buyer`, и по одному токену не понять, в какой роли он отменяет.
 
 - Повтор действия, которое уже выполнено, возвращает `200` и текущий статус. Недопустимый переход — `409`.
 - Чужой под-заказ — `404` (ADR-0006).
