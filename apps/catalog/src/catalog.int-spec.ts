@@ -253,7 +253,7 @@ describe('catalog: продавцы, товары, поиск (интеграц�
     expect((await api().get(`/catalog/products/${live.productId}`)).status).toBe(404);
     // токен ещё с правами, но магазин заблокирован
     expect(
-      (await as(seller).patch(`/seller/products/${live.productId}`, { title: 'x' })).status,
+      (await as(seller).patch(`/seller/products/${live.productId}`, { title: 'Миксер 2' })).status,
     ).toBe(403);
   });
 

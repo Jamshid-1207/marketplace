@@ -10,6 +10,8 @@
     ],
     "implicitDependencies": [
       "@repo/gateway",
+      "@repo/auth-service",
+      "@repo/catalog",
       "@repo/order",
       "@repo/payment",
       "@repo/erp",

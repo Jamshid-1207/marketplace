@@ -5,6 +5,7 @@
 
 ## [Unreleased] · Этап 5: продавцы и каталог
 ### Added
+- **Шаг 6: e2e этапа 5** (`apps/e2e/src/catalog.e2e-spec.ts`): регистрация и вход, ротация refresh и отзыв семейства; новый магазин — `pending`, роль после обновления токена, товар не опубликовать; одобрение магазина и товара — read-модели order и erp, заказ до `CONFIRMED`; отклонённый товар; поиск по-русски и по-узбекски, фильтры, курсор; сотрудник с правом `catalog`; изоляция и `403` на каждом эндпоинте кабинета catalog и сотрудников; категория доходит до payment; блокировка магазина. Сценарии работают с новым магазином, демо-магазины не меняются.
 - **Шаг 5: gateway и стенд** (SD-05, п. 5.3, 8).
   - Gateway: `/api/auth/**` (публично) и `/api/seller/staff` — в auth; `/api/catalog/**` (публично), `/api/sellers`, `/api/seller/shop`, `/api/seller/products/**`, `/api/admin/sellers | products | categories` — в catalog. Токены проверяются по JWKS auth.
   - Compose: сервисы auth и catalog с миграциями и seed; `JWKS_URL` всех сервисов — auth; `.env.example` — `DEV_USER_PASSWORD`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`.
@@ -42,6 +43,8 @@
 - Seed каталога в order (`SEED_CATALOG`), SKU в seed erp и категории в seed payment — данные приходят событиями catalog. Seed payment оставляет ставку «Телефоны» (`SEED_RATES`).
 
 ### Fixed
+- `kafka-init` читает состояние топиков одним `describe` и меняет только расхождения. Раньше на каждый топик было два запуска утилит Kafka (каждый — старт JVM). С топиками этапа 5 `docker compose start payment` ждал kafka-init около 100 с, и в e2e этапа 2 (сценарий 3) успевал истечь дедлайн оплаты.
+- Интеграционный тест catalog о блокировке магазина отправлял название короче допустимого и получал `400` вместо проверяемого `403`.
 - Генератор сервисов: если имя пакета уже занято lib (`libs/auth` → `@repo/auth`), пакет сервиса называется `@repo/<name>-service`.
 
 ### Decided
