@@ -53,6 +53,9 @@
     },
     {
       "path": "./apps/crm"
+    },
+    {
+      "path": "./apps/notification"
     }
   ]
 }

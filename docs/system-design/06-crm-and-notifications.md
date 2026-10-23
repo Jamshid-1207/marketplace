@@ -147,10 +147,10 @@ flowchart LR
 | --------------- | -------------------------------------------------------------------------------------------------------------------------- | -------------------------------- |
 | `recipients`    | `user_id`, `email`                                                                                                         | `user.registered`                |
 | `shops`         | `seller_id`, `owner_user_id`, `name`                                                                                       | `seller.registered`              |
-| `orders`        | `order_id`, `buyer_id`, `total`, `sub_orders`                                                                              | `order.confirmed`                |
-| `notifications` | `id`, `dedup_key` (уникален), `template`, `user_id`, `data`, `status` (`pending`, `sent`, `failed`), `attempts`, `next_attempt_at`, `sent_at` | обработчики событий |
+| `orders`        | `order_id`, `buyer_id`                                                                                                     | `order.confirmed`                |
+| `notifications` | `id`, `dedup_key` (уникален), `template`, `recipient_kind` (`user`, `seller_owner`, `order_buyer`), `recipient_id`, `data`, `status` (`pending`, `sent`, `failed`), `attempts`, `next_attempt_at`, `last_error`, `sent_at` | обработчики событий |
 
-`orders` нужна письму о возврате: `payment.refunded` не несёт покупателя.
+Адресат письма — пользователь, владелец магазина или покупатель заказа; email находится при отправке. События из разных топиков приходят в любом порядке: `order.confirmed` может опередить `seller.registered` владельца, а `payment.refunded` (он не несёт покупателя) — сам заказ. `orders` нужна как раз письму о возврате.
 
 ### 6.2 Доставка
 

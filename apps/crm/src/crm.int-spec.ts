@@ -1,7 +1,7 @@
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { PrismaPg } from '@prisma/adapter-pg';
-import { DevTokenIssuer, sellerEndpoints, type SellerPermission } from '@repo/auth';
+import { DevTokenIssuer, sellerEndpoints } from '@repo/auth';
 import {
   money,
   newId,
@@ -81,8 +81,8 @@ describe('crm: профили, сегменты, CRM продавца (инте�
 
   const get = (token: string, url: string) =>
     request(app.getHttpServer()).get(url).auth(token, { type: 'bearer' });
-  const sellerToken = (sellerId: string, scopes: SellerPermission[] = ['support']) =>
-    issuer.issue({ sub: newId(), roles: ['buyer', 'seller'], sellerId, scopes });
+  const sellerToken = (sellerId: string) =>
+    issuer.issue({ sub: newId(), roles: ['buyer', 'seller'], sellerId, scopes: ['support'] });
 
   /** Событие владельца топика — через outbox crm: relay отправит его в Kafka, как настоящее. */
   function publish<D extends AnyMessageDefinition>(
@@ -218,7 +218,13 @@ describe('crm: профили, сегменты, CRM продавца (инте�
     expect((await get(asC, `/seller/customers/${buyerId}`)).status).toBe(404);
     expect((await get(asC, '/seller/customers')).body.items).toEqual([]);
 
-    const clerk = await sellerToken(sellerA, ['orders']);
+    // сотрудник без права support; владелец (роль seller) имеет все права по роли
+    const clerk = await issuer.issue({
+      sub: newId(),
+      roles: ['buyer', 'seller_manager'],
+      sellerId: sellerA,
+      scopes: ['orders'],
+    });
     for (const { method, path } of sellerEndpoints(app)) {
       const res = await request(app.getHttpServer())
         [method.toLowerCase() as 'get'](path.replace(/:[a-zA-Z]+/g, newId()))

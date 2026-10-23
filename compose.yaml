@@ -538,6 +538,59 @@ services:
       resources:
         limits:
           memory: 256m
+  notification-migrate:
+    profiles:
+      - core
+      - full
+    build:
+      context: .
+      dockerfile: apps/notification/Dockerfile
+      target: migrate
+    environment:
+      DATABASE_URL: postgresql://notification_svc:${NOTIFICATION_DB_PASSWORD}@postgres:5432/notification_db
+    depends_on:
+      db-provision:
+        condition: service_completed_successfully
+  notification:
+    profiles:
+      - core
+      - full
+    build:
+      context: .
+      dockerfile: apps/notification/Dockerfile
+      target: runtime
+    restart: unless-stopped
+    environment:
+      PORT: '3000'
+      DATABASE_URL: postgresql://notification_svc:${NOTIFICATION_DB_PASSWORD}@postgres:5432/notification_db
+      DB_POOL_MAX: '5'
+      KAFKA_BROKERS: kafka:29092
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+      # письма — в Mailpit: http://localhost:8025 (ТЗ, 3.7)
+      SMTP_URL: smtp://mailpit:1025
+    healthcheck:
+      test:
+        - CMD
+        - wget
+        - -qO-
+        - http://localhost:3000/health/ready
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
+    depends_on:
+      notification-migrate:
+        condition: service_completed_successfully
+      kafka-init:
+        condition: service_completed_successfully
+      kafka:
+        condition: service_healthy
+      jaeger:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 256m
 
 volumes:
   pgdata:

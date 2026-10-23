@@ -1,0 +1,130 @@
+{
+  "name": "@repo/notification",
+  "version": "0.0.1",
+  "private": true,
+  "type": "commonjs",
+  "main": "./dist/main.js",
+  "files": [
+    "dist",
+    "prisma",
+    "prisma.config.ts"
+  ],
+  "nx": {
+    "tags": [
+      "type:app",
+      "platform:node"
+    ],
+    "targets": {
+      "prisma-generate": {
+        "executor": "nx:run-commands",
+        "options": {
+          "command": "prisma generate",
+          "cwd": "{projectRoot}"
+        },
+        "inputs": [
+          "{projectRoot}/prisma/**/*",
+          "{projectRoot}/prisma.config.ts"
+        ],
+        "outputs": [
+          "{projectRoot}/src/generated/prisma"
+        ],
+        "cache": true
+      },
+      "build": {
+        "executor": "nx:run-commands",
+        "options": {
+          "command": "tsc --build tsconfig.app.json",
+          "cwd": "{projectRoot}"
+        },
+        "dependsOn": [
+          "prisma-generate",
+          "^build"
+        ],
+        "inputs": [
+          "production",
+          "^production"
+        ],
+        "outputs": [
+          "{projectRoot}/dist"
+        ],
+        "cache": true
+      },
+      "typecheck": {
+        "dependsOn": [
+          "prisma-generate"
+        ]
+      },
+      "test": {
+        "dependsOn": [
+          "prisma-generate"
+        ]
+      },
+      "test-integration": {
+        "executor": "nx:run-commands",
+        "options": {
+          "command": "jest --config jest.int.config.cjs",
+          "cwd": "{projectRoot}",
+          "env": {
+            "NODE_OPTIONS": "--experimental-vm-modules --disable-warning=ExperimentalWarning"
+          }
+        },
+        "dependsOn": [
+          "prisma-generate",
+          "^build"
+        ],
+        "cache": false
+      },
+      "migrate": {
+        "executor": "nx:run-commands",
+        "options": {
+          "command": "prisma migrate dev",
+          "cwd": "{projectRoot}",
+          "env": {
+            "DATABASE_URL": "postgresql://notification_svc:notification_local@localhost:5432/notification_db",
+            "SHADOW_DATABASE_URL": "postgresql://notification_svc:notification_local@localhost:5432/notification_db_shadow"
+          }
+        }
+      },
+      "serve": {
+        "executor": "nx:run-commands",
+        "continuous": true,
+        "dependsOn": [
+          "build"
+        ],
+        "options": {
+          "command": "node --require ./dist/instrumentation.js dist/main.js",
+          "cwd": "{projectRoot}",
+          "env": {
+            "PORT": "3100",
+            "DATABASE_URL": "postgresql://notification_svc:notification_local@localhost:5432/notification_db",
+            "KAFKA_BROKERS": "localhost:9092",
+            "LOG_PRETTY": "true"
+          }
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "@nestjs/common": "12.2.0",
+    "@nestjs/core": "12.2.0",
+    "@nestjs/platform-express": "12.2.0",
+    "@prisma/adapter-pg": "7.10.1",
+    "@prisma/client": "7.10.1",
+    "@repo/contracts": "workspace:*",
+    "@repo/idempotency": "workspace:*",
+    "@repo/kafka": "workspace:*",
+    "@repo/observability": "workspace:*",
+    "@repo/outbox": "workspace:*",
+    "nestjs-pino": "5.3.1",
+    "nodemailer": "8.0.7",
+    "reflect-metadata": "0.2.2",
+    "rxjs": "7.8.2",
+    "tslib": "^2.8.1",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@repo/testing": "workspace:*",
+    "@types/nodemailer": "8.0.2",
+    "prisma": "7.10.1"
+  }
+}
