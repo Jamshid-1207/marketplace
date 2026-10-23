@@ -63,6 +63,8 @@ jobs:
           cache: pnpm
       - uses: nrwl/nx-set-shas@v5
       - run: pnpm install --frozen-lockfile
+      # compose читает .env и в шаге очистки — даже когда smoke не затронут и не запускался
+      - run: cp .env.example .env
       - run: pnpm nx affected -t smoke --output-style=static
       - if: failure()
         run: docker compose --profile core logs --no-color
