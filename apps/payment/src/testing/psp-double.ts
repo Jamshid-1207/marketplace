@@ -28,6 +28,11 @@ export class PspDouble {
   private readonly responses = new Map<string, { status: number; body: unknown }>();
   private server?: Server;
   private seq = 0;
+
+  /**
+   * `idPrefix` — для интеграционных тестов: файлы делят одну базу, а id провайдера в ней уникальны.
+   */
+  constructor(private readonly idPrefix = '') {}
   url = '';
 
   async start(): Promise<this> {
@@ -79,7 +84,7 @@ export class PspDouble {
 
   private operation(path: string, body: Record<string, unknown>) {
     if (path === '/v1/payouts') {
-      const id = `po_${++this.seq}`;
+      const id = `po_${this.idPrefix}${++this.seq}`;
       this.payouts.set(id, {
         id,
         merchantReference: String(body.merchantReference),
@@ -88,7 +93,7 @@ export class PspDouble {
       return { status: 201, body: { id, status: 'pending' } };
     }
     if (path === '/v1/payments') {
-      const id = `psp_${++this.seq}`;
+      const id = `psp_${this.idPrefix}${++this.seq}`;
       this.payments.set(id, {
         id,
         merchantReference: String(body.merchantReference),

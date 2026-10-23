@@ -35,7 +35,7 @@ describe('payment: деньги (интеграция)', () => {
   let finance: FinanceReader;
 
   beforeAll(async () => {
-    psp = await new PspDouble().start();
+    psp = await new PspDouble(`${newId().slice(-8)}_`).start();
     issuer = await DevTokenIssuer.create();
     jwks = createServer((_, res) => res.end(JSON.stringify(issuer.jwks())));
     await new Promise<void>((resolve) => jwks.listen(0, resolve));

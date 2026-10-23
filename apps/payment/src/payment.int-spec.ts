@@ -31,7 +31,7 @@ describe('payment (интеграция)', () => {
   let psp: PspDouble;
 
   beforeAll(async () => {
-    psp = await new PspDouble().start();
+    psp = await new PspDouble(`${newId().slice(-8)}_`).start();
     await createTopics(
       { topic: 'payment.commands' },
       { topic: 'payment.events' },

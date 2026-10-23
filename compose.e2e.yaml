@@ -16,6 +16,11 @@ services:
       # после TTL резервирует заново (SD-03, п. 5.3)
       RESERVE_TTL_MS: '45000'
       RESERVE_SWEEP_MS: '1000'
+  payment:
+    environment:
+      # удержание денег продавца — секунды: e2e проверяет «в ожидании» → «доступно» (SD-04, п. 5)
+      SELLER_HOLD_MS: '5000'
+      MONEY_TICK_MS: '1000'
   gateway:
     environment:
       # все сценарии идут от нескольких тестовых пользователей подряд
@@ -24,3 +29,4 @@ services:
   fake-psp:
     environment:
       PSP_TEST_API: 'true'
+      PSP_PAYOUT_DELAY_MS: '1000'
