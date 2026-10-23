@@ -1,12 +1,14 @@
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import { DevTokenIssuer } from '@repo/auth';
+import { DevTokenIssuer, sellerEndpoints } from '@repo/auth';
 import {
   DEV_CATALOG,
   newId,
   PaymentAuthorizedV1,
   PaymentCapturedV1,
   PaymentCreatedV1,
+  StockCommittedV1,
+  StockReservedV1,
   type AnyMessageDefinition,
   type PayloadOf,
 } from '@repo/contracts';
@@ -18,6 +20,7 @@ import type { AddressInfo } from 'node:net';
 import request from 'supertest';
 import { AppModule } from './app.module';
 import { CheckoutService } from './application/checkout.service';
+import { SubOrderService } from './application/sub-order.service';
 import { loadConfig } from './config';
 import { PrismaService } from './infrastructure/prisma.service';
 import { seedCatalog } from './infrastructure/seed-catalog';
@@ -53,13 +56,16 @@ describe('order: оформление (интеграция)', () => {
   let jwks: Awaited<ReturnType<typeof serveJwks>>;
   let buyerA: string;
   let buyerB: string;
+  let issuer: DevTokenIssuer;
 
   beforeAll(async () => {
-    const issuer = await DevTokenIssuer.create();
+    issuer = await DevTokenIssuer.create();
     jwks = await serveJwks(issuer);
     buyerA = await issuer.issue({ sub: newId(), roles: ['buyer'], scopes: [] });
     buyerB = await issuer.issue({ sub: newId(), roles: ['buyer'], scopes: [] });
     await createTopics(
+      { topic: 'erp.events' },
+      { topic: 'erp.commands' },
       { topic: 'payment.events' },
       { topic: 'payment.commands' },
       { topic: 'order.events' },
@@ -98,12 +104,14 @@ describe('order: оформление (интеграция)', () => {
   const get = (token: string, path: string) =>
     http().get(path).set('Authorization', `Bearer ${token}`);
 
-  /** Событие payment — как его опубликует payment: через outbox в payment.events. */
+  /** Ответ участника saga — как его опубликуют erp и payment: через outbox в их топики. */
   const publish = <D extends AnyMessageDefinition>(definition: D, payload: PayloadOf<D>) =>
     runInNewChain(() =>
       prisma.$transaction((tx) =>
         outbox.add(tx, definition, payload, {
-          aggregateId: (payload as { paymentId: string }).paymentId,
+          aggregateId:
+            (payload as { paymentId?: string }).paymentId ??
+            (payload as { orderId: string }).orderId,
           aggregateVersion: 1,
         }),
       ),
@@ -126,16 +134,16 @@ describe('order: оформление (интеграция)', () => {
     return res.body.orderId;
   }
 
-  it('POST /orders → 202 AWAITING_PAYMENT; GET показывает под-заказы двух продавцов', async () => {
+  it('POST /orders → 202 RESERVING; GET показывает под-заказы двух продавцов', async () => {
     const res = await post(buyerA, newId());
     expect(res.status).toBe(202);
-    expect(res.body.status).toBe('AWAITING_PAYMENT');
+    expect(res.body.status).toBe('RESERVING');
     const view = await get(buyerA, `/orders/${res.body.orderId}`);
     expect(view.status).toBe(200);
     expect(view.body.subOrders).toHaveLength(2);
     expect(view.body.total.amountMinor).toBe(phone.priceMinor + kettle.priceMinor);
     expect(view.body.subOrders.every((s: { status: string }) => s.status === 'PENDING')).toBe(true);
-    expect(await outboxOf(res.body.orderId)).toEqual(['order.created', 'CreatePayment']);
+    expect(await outboxOf(res.body.orderId)).toEqual(['order.created', 'ReserveStock']);
   });
 
   it('чужой заказ — 404; без токена — 401; без Idempotency-Key — 400; недоступный SKU — 422', async () => {
@@ -163,9 +171,13 @@ describe('order: оформление (интеграция)', () => {
     expect(other.status).toBe(422);
   });
 
-  it('события payment через Kafka: created → authorized → captured = CONFIRMED', async () => {
+  it('ответы erp и payment через Kafka: резерв → оплата → закрепление → списание = CONFIRMED', async () => {
     const orderId = await newOrder();
     const paymentId = newId();
+    await publish(StockReservedV1, { orderId });
+    await eventually(async () => (await state(orderId)) === 'AWAITING_PAYMENT', {
+      what: 'AWAITING_PAYMENT',
+    });
     await publish(PaymentCreatedV1, {
       paymentId,
       orderId,
@@ -178,9 +190,11 @@ describe('order: оформление (интеграция)', () => {
       },
     );
     await publish(PaymentAuthorizedV1, { paymentId, orderId });
+    await eventually(async () => (await state(orderId)) === 'COMMITTING', { what: 'COMMITTING' });
+    expect((await get(buyerA, `/orders/${orderId}`)).body.paymentUrl).toBeNull();
+    await publish(StockCommittedV1, { orderId });
     await eventually(async () => (await state(orderId)) === 'CAPTURING', { what: 'CAPTURING' });
     const view = await get(buyerA, `/orders/${orderId}`);
-    expect(view.body.paymentUrl).toBeNull(); // страница оплаты больше не нужна
     await publish(PaymentCapturedV1, { paymentId, orderId, amount: view.body.total });
     await eventually(async () => (await state(orderId)) === 'CONFIRMED', { what: 'CONFIRMED' });
     const confirmed = await get(buyerA, `/orders/${orderId}`);
@@ -190,7 +204,9 @@ describe('order: оформление (интеграция)', () => {
     ]);
     expect(await outboxOf(orderId)).toEqual([
       'order.created',
+      'ReserveStock',
       'CreatePayment',
+      'CommitStock',
       'CapturePayment',
       'order.confirmed',
     ]);
@@ -200,27 +216,28 @@ describe('order: оформление (интеграция)', () => {
     const orderId = await newOrder();
     const service = app.get(CheckoutService);
     const eventId = newId();
-    const input = { type: 'payment.authorized' as const, paymentId: newId() };
+    const input = { type: 'stock.reserved' as const };
     await runInNewChain(() =>
       Promise.all([
-        service.onPaymentEvent(orderId, eventId, input),
-        service.onPaymentEvent(orderId, eventId, input),
+        service.onSagaEvent(orderId, eventId, input),
+        service.onSagaEvent(orderId, eventId, input),
       ]),
     );
-    expect((await outboxOf(orderId)).filter((t) => t === 'CapturePayment')).toHaveLength(1);
+    expect((await outboxOf(orderId)).filter((t) => t === 'CreatePayment')).toHaveLength(1);
   });
 
   it('одновременные payment.authorized и дедлайн оплаты — ровно один переход', async () => {
     const service = app.get(CheckoutService);
     for (let i = 0; i < 5; i++) {
       const orderId = await newOrder();
+      await runInNewChain(() => service.onSagaEvent(orderId, newId(), { type: 'stock.reserved' }));
       await prisma.checkoutSaga.update({
         where: { orderId },
         data: { deadlineAt: new Date(Date.now() - 1_000) },
       });
       await runInNewChain(() =>
         Promise.all([
-          service.onPaymentEvent(orderId, newId(), {
+          service.onSagaEvent(orderId, newId(), {
             type: 'payment.authorized',
             paymentId: newId(),
           }),
@@ -231,16 +248,18 @@ describe('order: оформление (интеграция)', () => {
       await service.processDeadlines();
       const commands = await outboxOf(orderId);
       const final = await state(orderId);
-      if (final === 'CAPTURING') {
-        expect(commands).toEqual(['order.created', 'CreatePayment', 'CapturePayment']);
+      if (final === 'COMMITTING') {
+        expect(commands).toEqual(['order.created', 'ReserveStock', 'CreatePayment', 'CommitStock']);
       } else {
         expect(final).toBe('CANCELLED');
         // отмена по дедлайну, затем поздняя оплата снимается ещё одной CancelPayment
         expect(commands).toEqual([
           'order.created',
+          'ReserveStock',
           'CreatePayment',
           'order.cancelled',
           'CancelPayment',
+          'ReleaseStock',
           'CancelPayment',
         ]);
       }
@@ -260,5 +279,151 @@ describe('order: оформление (интеграция)', () => {
     expect(second.body.items.map((i: { orderId: string }) => i.orderId)).toEqual([ids[0]]);
     expect(second.body.nextCursor).toBeNull();
     expect((await get(buyerB, '/orders?cursor=garbage')).status).toBe(400);
+  });
+
+  describe('под-заказы', () => {
+    /** Заказ, прошедший saga до CONFIRMED, — через сервис, без Kafka. */
+    async function confirmedOrder() {
+      const orderId = await newOrder();
+      const service = app.get(CheckoutService);
+      const paymentId = newId();
+      for (const input of [
+        { type: 'stock.reserved' as const },
+        { type: 'payment.authorized' as const, paymentId },
+        { type: 'stock.committed' as const },
+        { type: 'payment.captured' as const, paymentId },
+      ]) {
+        await runInNewChain(() => service.onSagaEvent(orderId, newId(), input));
+      }
+      const subs = await prisma.subOrder.findMany({
+        where: { orderId },
+        orderBy: { sellerId: 'asc' },
+      });
+      return { orderId, subs };
+    }
+
+    const versionsOf = async (orderId: string) =>
+      (await prisma.outbox.findMany({ where: { messageKey: orderId }, orderBy: { id: 'asc' } }))
+        .map((row) => row.payload as { type: string; aggregateVersion: number })
+        .filter((e) => e.type.startsWith('sub-order.'))
+        .map((e) => e.aggregateVersion);
+
+    it('отгрузка и отмена одного под-заказа одновременно — проходит ровно одно действие', async () => {
+      const subOrders = app.get(SubOrderService);
+      for (let i = 0; i < 5; i++) {
+        const { orderId, subs } = await confirmedOrder();
+        const seller = { kind: 'seller' as const, sellerId: subs[0].sellerId };
+        const results = await runInNewChain(() =>
+          Promise.allSettled([
+            subOrders.act(seller, subs[0].subOrderId, 'ship'),
+            subOrders.act(seller, subs[0].subOrderId, 'cancel'),
+          ]),
+        );
+        expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+        expect(await versionsOf(orderId)).toHaveLength(1);
+      }
+    });
+
+    it('действия с разными под-заказами одного заказа — версии N+1 и N+2, без дубля', async () => {
+      const subOrders = app.get(SubOrderService);
+      const { orderId, subs } = await confirmedOrder();
+      await runInNewChain(() =>
+        Promise.all(
+          subs.map((sub) =>
+            subOrders.act({ kind: 'seller', sellerId: sub.sellerId }, sub.subOrderId, 'ship'),
+          ),
+        ),
+      );
+      expect((await versionsOf(orderId)).sort()).toEqual([3, 4]);
+    });
+
+    it('кабинет продавца: свои под-заказы, адрес доставки; чужой — 404; без права orders — 403', async () => {
+      const { orderId, subs } = await confirmedOrder();
+      const sellerA = `Bearer ${await issuer.issue({
+        sub: newId(),
+        roles: ['buyer', 'seller'],
+        sellerId: subs[0].sellerId,
+        scopes: [],
+      })}`;
+      const list = await http().get('/seller/sub-orders').set('Authorization', sellerA).expect(200);
+      expect(
+        list.body.items.some((i: { subOrderId: string }) => i.subOrderId === subs[0].subOrderId),
+      ).toBe(true);
+      expect(list.body.items.every((i: { orderId: string }) => typeof i.orderId === 'string')).toBe(
+        true,
+      );
+      const one = await http()
+        .get(`/seller/sub-orders/${subs[0].subOrderId}`)
+        .set('Authorization', sellerA)
+        .expect(200);
+      expect(one.body).toMatchObject({ orderId, shipping: body.shipping });
+      expect(one.body.lines).toHaveLength(1);
+      expect(
+        (await http().get(`/seller/sub-orders/${subs[1].subOrderId}`).set('Authorization', sellerA))
+          .status,
+      ).toBe(404);
+      expect(
+        (
+          await http()
+            .post(`/seller/sub-orders/${subs[1].subOrderId}/ship`)
+            .set('Authorization', sellerA)
+        ).status,
+      ).toBe(404);
+
+      const shipped = await http()
+        .post(`/seller/sub-orders/${subs[0].subOrderId}/ship`)
+        .set('Authorization', sellerA)
+        .expect(200);
+      expect(shipped.body.status).toBe('SHIPPED');
+      const late = await http()
+        .post(`/seller/sub-orders/${subs[0].subOrderId}/cancel`)
+        .set('Authorization', sellerA);
+      expect(late.status).toBe(409);
+
+      const noRight = `Bearer ${await issuer.issue({
+        sub: newId(),
+        roles: ['buyer', 'seller_manager'],
+        sellerId: subs[0].sellerId,
+        scopes: ['warehouse'],
+      })}`;
+      expect((await http().get('/seller/sub-orders').set('Authorization', noRight)).status).toBe(
+        403,
+      );
+    });
+
+    it('покупатель отменяет под-заказ своего заказа; чужой — 404', async () => {
+      const { orderId, subs } = await confirmedOrder();
+      const cancel = (token: string) =>
+        http()
+          .post(`/orders/${orderId}/sub-orders/${subs[1].subOrderId}/cancel`)
+          .set('Authorization', `Bearer ${token}`);
+      expect((await cancel(buyerB)).status).toBe(404);
+      const res = await cancel(buyerA);
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe('CANCELLED');
+      expect((await cancel(buyerA)).body.status).toBe('CANCELLED'); // повтор — тот же статус
+      const commands = await outboxOf(orderId);
+      expect(commands.slice(-3)).toEqual(['sub-order.cancelled', 'ReleaseStock', 'RefundPayment']);
+    });
+  });
+
+  it('каждый эндпоинт кабинета (@SellerScope): сотрудник без права — 403 (ADR-0006, п. 8)', async () => {
+    const endpoints = sellerEndpoints(app);
+    expect(endpoints.length).toBeGreaterThan(0);
+    for (const endpoint of endpoints) {
+      const other = (['warehouse', 'orders'] as const).find((p) => p !== endpoint.permission);
+      const token = await issuer.issue({
+        sub: newId(),
+        roles: ['buyer', 'seller_manager'],
+        sellerId: newId(),
+        scopes: [other as 'warehouse' | 'orders'],
+      });
+      const path = endpoint.path.replace(/:[^/]+/g, newId());
+      const res = await request(app.getHttpServer())
+        [endpoint.method.toLowerCase() as 'get' | 'post' | 'patch' | 'put'](path)
+        .set('Authorization', `Bearer ${token}`)
+        .send({});
+      expect({ endpoint, status: res.status }).toEqual({ endpoint, status: 403 });
+    }
   });
 });

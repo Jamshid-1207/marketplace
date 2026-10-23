@@ -3,12 +3,13 @@ import {
   money,
   toSafeNumber,
   type AggregateRef,
+  type Money,
   type AnyMessageDefinition,
   type PayloadOf,
 } from '@repo/contracts';
 import { idempotent } from '@repo/idempotency';
 import { outbox } from '@repo/outbox';
-import type { PaymentRepository, PaymentTx } from '../application/ports';
+import type { PaymentRepository, PaymentTx, Refund } from '../application/ports';
 import type { Payment, PaymentStatus } from '../domain/payment';
 import type { Prisma, Payment as PaymentRow } from '../generated/prisma/client';
 import { PrismaService } from './prisma.service';
@@ -83,6 +84,54 @@ class PrismaPaymentTx implements PaymentTx {
     aggregate: AggregateRef,
   ): Promise<void> {
     await outbox.add(this.tx, definition, payload, aggregate);
+  }
+
+  async saveSubOrderAmounts(
+    paymentId: string,
+    amounts: { subOrderId: string; amount: Money }[],
+  ): Promise<void> {
+    await this.tx.paymentSubOrder.createMany({
+      data: amounts.map(({ subOrderId, amount }) => ({
+        subOrderId,
+        paymentId,
+        amountMinor: BigInt(amount.amountMinor),
+      })),
+      skipDuplicates: true,
+    });
+  }
+
+  async subOrderAmount(paymentId: string, subOrderId: string): Promise<Money | null> {
+    const row = await this.tx.paymentSubOrder.findFirst({ where: { paymentId, subOrderId } });
+    return row ? money(toSafeNumber(row.amountMinor)) : null;
+  }
+
+  async lockRefund(subOrderId: string): Promise<Refund | null> {
+    await this.tx
+      .$queryRaw`SELECT 1 FROM refunds WHERE sub_order_id = ${subOrderId}::uuid FOR UPDATE`;
+    const row = await this.tx.refund.findUnique({ where: { subOrderId } });
+    return row
+      ? {
+          paymentId: row.paymentId,
+          subOrderId: row.subOrderId,
+          amount: money(toSafeNumber(row.amountMinor)),
+          status: row.status as Refund['status'], // ограничено CHECK в базе
+          failureReason: row.failureReason,
+        }
+      : null;
+  }
+
+  async saveRefund(refund: Refund): Promise<void> {
+    const data = { status: refund.status, failureReason: refund.failureReason };
+    await this.tx.refund.upsert({
+      where: { subOrderId: refund.subOrderId },
+      create: {
+        subOrderId: refund.subOrderId,
+        paymentId: refund.paymentId,
+        amountMinor: BigInt(refund.amount.amountMinor),
+        ...data,
+      },
+      update: data,
+    });
   }
 
   once(handler: string, eventId: string, fn: () => Promise<void>): Promise<boolean> {

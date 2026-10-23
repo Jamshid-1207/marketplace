@@ -8,6 +8,8 @@ interface DoublePayment {
   status: 'requires_action' | 'authorized' | 'captured' | 'voided';
   captures: number;
   voids: number;
+  refunds: number;
+  refundedMinor: number;
 }
 
 /**
@@ -81,6 +83,8 @@ export class PspDouble {
         status: 'requires_action',
         captures: 0,
         voids: 0,
+        refunds: 0,
+        refundedMinor: 0,
       });
       return { status: 201, body: { id, paymentUrl: `http://psp.test/pay/${id}` } };
     }
@@ -90,6 +94,16 @@ export class PspDouble {
     if (action === 'capture' && payment.status === 'authorized') {
       payment.status = 'captured';
       payment.captures++;
+      return { status: 200, body: payment };
+    }
+    const refund = Number(body.amountMinor);
+    if (
+      action === 'refund' &&
+      payment.status === 'captured' &&
+      payment.refundedMinor + refund <= payment.amountMinor
+    ) {
+      payment.refunds++;
+      payment.refundedMinor += refund;
       return { status: 200, body: payment };
     }
     if (action === 'void' && ['requires_action', 'authorized'].includes(payment.status)) {

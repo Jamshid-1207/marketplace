@@ -14,16 +14,30 @@ import { upstream } from './upstream';
 export class ProxyController {
   private readonly order: RequestHandler;
   private readonly payment: RequestHandler;
+  private readonly erp: RequestHandler;
 
   constructor(@Inject(CONFIG) config: Config) {
     const timeoutMs = config.UPSTREAM_TIMEOUT_MS;
     this.order = upstream({ target: config.ORDER_URL, timeoutMs, stripPrefix: '/api' });
     this.payment = upstream({ target: config.PAYMENT_URL, timeoutMs });
+    this.erp = upstream({ target: config.ERP_URL, timeoutMs, stripPrefix: '/api' });
   }
 
-  @All(['api/orders', 'api/orders/*path'])
+  /** Заказы покупателя и под-заказы в кабинете продавца — в order (SD-03, п. 6.3). */
+  @All(['api/orders', 'api/orders/*path', 'api/seller/sub-orders', 'api/seller/sub-orders/*path'])
   orders(@Req() req: Request, @Res() res: Response, @Next() next: NextFunction): void {
     void this.order(req, res, next);
+  }
+
+  /** Склады и остатки в кабинете продавца — в erp (SD-03, п. 5.6). */
+  @All([
+    'api/seller/warehouses',
+    'api/seller/warehouses/*path',
+    'api/seller/stock',
+    'api/seller/stock/*path',
+  ])
+  warehouse(@Req() req: Request, @Res() res: Response, @Next() next: NextFunction): void {
+    void this.erp(req, res, next);
   }
 
   /** Без JWT и лимита: подлинность проверяет payment по подписи, провайдер повторяет сам. */

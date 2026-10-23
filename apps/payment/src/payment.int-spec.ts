@@ -4,6 +4,7 @@ import {
   CancelPaymentV1,
   CapturePaymentV1,
   CreatePaymentV1,
+  RefundPaymentV1,
   money,
   newId,
   type AnyMessageDefinition,
@@ -219,6 +220,27 @@ describe('payment (интеграция)', () => {
     await untilStatus(orderId, 'CANCELLED');
     expect(psp.byReference(paymentId).voids).toBe(1);
     expect(await eventsOf(orderId)).toEqual(['payment.created', 'payment.cancelled']);
+  });
+
+  it('повтор RefundPayment — один возврат у провайдера, payment.refunded дважды', async () => {
+    const { orderId, paymentId } = await authorizedPayment();
+    const parts = subOrders();
+    await send(CapturePaymentV1, { orderId, subOrders: parts });
+    await untilStatus(orderId, 'CAPTURED');
+    await send(RefundPaymentV1, { orderId, subOrderId: parts[0].subOrderId });
+    await send(RefundPaymentV1, { orderId, subOrderId: parts[0].subOrderId });
+    await eventually(
+      async () => (await eventsOf(orderId)).filter((t) => t === 'payment.refunded').length === 2,
+      { what: 'payment.refunded дважды' },
+    );
+    expect(psp.byReference(paymentId)).toMatchObject({
+      refunds: 1,
+      refundedMinor: amount.amountMinor,
+    });
+    const refund = await prisma.refund.findUniqueOrThrow({
+      where: { subOrderId: parts[0].subOrderId },
+    });
+    expect(refund.status).toBe('REFUNDED');
   });
 
   it('webhook с неверной подписью — 401', async () => {

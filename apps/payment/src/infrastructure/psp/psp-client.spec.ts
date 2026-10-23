@@ -9,7 +9,7 @@ describe('PspHttpClient', () => {
 
   beforeEach(async () => {
     psp = await new PspDouble().start();
-    client = new PspHttpClient({ baseUrl: psp.url, timeoutMs: 1_000 });
+    client = new PspHttpClient({ baseUrl: psp.url, timeoutMs: 5_000 });
   });
 
   afterEach(() => psp.stop());

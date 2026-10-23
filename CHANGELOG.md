@@ -5,6 +5,15 @@
 
 ## [Unreleased] · Этап 3: склад
 ### Added
+- **Шаг 7: e2e этапа 3** (`apps/e2e/src/warehouse.e2e-spec.ts`): закреплённый резерв и списание при отгрузке, отмена под-заказа продавцом с возвратом его суммы, отмена покупателем до и после отгрузки, одновременные отгрузка и отмена, нехватка товара, истечение резерва по TTL и неудачное закрепление, erp недоступна во время `CommitStock`, `stock.low`, изоляция кабинета (`404` чужому продавцу, `403` сотруднику без права). Стенд: erp в `run.sh`, TTL резерва 45 с.
+- **Шаг 6: gateway** — `/api/seller/sub-orders/**` → order, `/api/seller/warehouses/**` и `/api/seller/stock/**` → erp (`ERP_URL`).
+- **Шаг 5: order — полная saga и под-заказы** (SD-03, п. 6).
+  - `transition` по таблице ADR-0005, п. 4 целиком: `RESERVING`, `COMMITTING`, компенсации `ReleaseStock`, поздний `stock.reserved`; дедлайны резерва (30 с) и закрепления (5 мин, повтор с алертом).
+  - Под-заказы: отгрузка, доставка, отмена (`decideAction`; повтор — `200`, недопустимо — `409`). Блокировка «заказ → под-заказ», событие с позициями и суммой, при отмене — `ReleaseStock` и `RefundPayment` только этого под-заказа; `payment.refunded` отмечает возврат, неподтверждённый за `REFUND_ALERT_MS` — алерт.
+  - HTTP: покупатель — `POST /orders/:orderId/sub-orders/:id/cancel`; кабинет — `GET /seller/sub-orders`, `GET /seller/sub-orders/:id` (получатель и адрес, без email), `POST /seller/sub-orders/:id/ship | deliver | cancel` с `@SellerScope('orders')`.
+  - Тесты: 46 unit; интеграционные — путь через Kafka до `CONFIRMED`, гонка оплаты и дедлайна, одновременные отгрузка и отмена — одно действие, действия с разными под-заказами — версии N+1 и N+2, кабинет по HTTP, проверка `403` для каждого эндпоинта `@SellerScope` из метаданных.
+- Тесты payment: таймаут вызова двойника провайдера — 5 с вместо 1 с. Под нагрузкой параллельного прогона вызов иногда не укладывался в секунду, и тест сбоя получал «провайдер недоступен».
+- **Шаг 4: возврат.** fake-psp: `POST /v1/payments/:id/refund` — частичный, в сумме не больше списания, счётчики `refunds` и `refundedMinor`. payment: `RefundPayment` в три шага (`REFUNDING` → провайдер с ключом `<paymentId>:refund:<subOrderId>` → `REFUNDED` и `payment.refunded`), сумма — из разбивки, сохранённой при списании; повтор — один возврат.
 - **Шаг 3: `apps/erp`** (полный шаблон генератора, SD-03, п. 5).
   - Данные: `warehouses` (приоритет, активность), `stock` (`on_hand`, `reserved`, CHECK `reserved ≤ on_hand`), `reservation_orders` и `reservations` (позиция заказа на одном складе, TTL у незакреплённой), `stock_thresholds`, `sales`, read-model `catalog_skus`. Seed складов и остатков — `dist/seed.js` в `erp-migrate` при `SEED_STOCK=true`, остатки повторно не сбрасываются.
   - `ReserveStock` — всё или ничего, позиция целиком на первом по приоритету складе своего продавца; строки остатков блокируются в одном порядке `(warehouse_id, sku_id)`. Повтор — тот же ответ. `CommitStock` снимает TTL, истёкший резерв резервирует заново или отвечает `stock.commit-failed`. `ReleaseStock` — заказ или под-заказ, отгруженное не трогает.

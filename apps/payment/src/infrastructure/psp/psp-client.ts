@@ -4,6 +4,7 @@ import {
   PspRejectedError,
   type CaptureResult,
   type PspGateway,
+  type RefundResult,
   type VoidResult,
 } from '../../application/ports';
 
@@ -80,6 +81,22 @@ export class PspHttpClient implements PspGateway {
     );
     return ok(response.status)
       ? { status: 'voided' }
+      : { status: 'rejected', reason: reason(response) };
+  }
+
+  async refund(
+    paymentId: string,
+    providerPaymentId: string,
+    subOrderId: string,
+    amount: Money,
+  ): Promise<RefundResult> {
+    const response = await this.post(
+      `/v1/payments/${encodeURIComponent(providerPaymentId)}/refund`,
+      `${paymentId}:refund:${subOrderId}`,
+      { amountMinor: amount.amountMinor },
+    );
+    return ok(response.status)
+      ? { status: 'refunded' }
       : { status: 'rejected', reason: reason(response) };
   }
 

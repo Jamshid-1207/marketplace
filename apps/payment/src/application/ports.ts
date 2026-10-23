@@ -14,6 +14,15 @@ export interface PaymentTx {
     payload: PayloadOf<D>,
     aggregate: AggregateRef,
   ): Promise<void>;
+  /** Разбивка списания по под-заказам: из неё берётся сумма возврата (SD-03, п. 7). */
+  saveSubOrderAmounts(
+    paymentId: string,
+    amounts: { subOrderId: string; amount: Money }[],
+  ): Promise<void>;
+  subOrderAmount(paymentId: string, subOrderId: string): Promise<Money | null>;
+  /** Возврат под-заказа под `FOR UPDATE`. */
+  lockRefund(subOrderId: string): Promise<Refund | null>;
+  saveRefund(refund: Refund): Promise<void>;
   /** `fn` один раз на пару (обработчик, событие); `false` — уже обработано (ADR-0002, п. 7). */
   once(handler: string, eventId: string, fn: () => Promise<void>): Promise<boolean>;
 }
@@ -24,6 +33,16 @@ export interface PaymentRepository {
   findById(paymentId: string): Promise<Payment | null>;
 }
 
+/** Возврат суммы под-заказа: те же три шага, что у списания (SD-03, п. 7). */
+export interface Refund {
+  paymentId: string;
+  subOrderId: string;
+  amount: Money;
+  status: 'REFUNDING' | 'REFUNDED' | 'FAILED';
+  failureReason: string | null;
+}
+
+export type RefundResult = { status: 'refunded' } | { status: 'rejected'; reason: string };
 export type CaptureResult = { status: 'captured' } | { status: 'rejected'; reason: string };
 export type VoidResult = { status: 'voided' } | { status: 'rejected'; reason: string };
 
@@ -39,6 +58,13 @@ export interface PspGateway {
   }): Promise<{ providerPaymentId: string; paymentUrl: string }>;
   capture(paymentId: string, providerPaymentId: string): Promise<CaptureResult>;
   void(paymentId: string, providerPaymentId: string): Promise<VoidResult>;
+  /** Ключ — `<paymentId>:refund:<subOrderId>`: у каждого под-заказа свой возврат. */
+  refund(
+    paymentId: string,
+    providerPaymentId: string,
+    subOrderId: string,
+    amount: Money,
+  ): Promise<RefundResult>;
 }
 
 /** Провайдер окончательно отказал в создании платежа: ошибка в данных, повтор не поможет. */

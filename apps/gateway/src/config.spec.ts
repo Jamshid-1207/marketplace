@@ -6,6 +6,7 @@ describe('loadConfig', () => {
       PORT: 3000,
       ORDER_URL: 'http://localhost:3101',
       PAYMENT_URL: 'http://localhost:3102',
+      ERP_URL: 'http://localhost:3103',
       UPSTREAM_TIMEOUT_MS: 10_000,
       DEV_AUTH: false,
       RATE_LIMIT_PER_MINUTE: 100,

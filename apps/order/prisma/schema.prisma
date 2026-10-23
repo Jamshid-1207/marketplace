@@ -90,6 +90,11 @@ model SubOrder {
   sellerId    String   @map("seller_id") @db.Uuid
   status      String
   amountMinor BigInt   @map("amount_minor")
+  /// возврат при отмене (SD-03, п. 6.2): REQUESTED, затем REFUNDED по payment.refunded
+  refundStatus      String?   @map("refund_status")
+  refundRequestedAt DateTime? @map("refund_requested_at") @db.Timestamptz(6)
+  /// алерт «возврат не подтверждён за час» уже отправлен
+  refundAlertedAt   DateTime? @map("refund_alerted_at") @db.Timestamptz(6)
   updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   order Order @relation(fields: [orderId], references: [orderId])

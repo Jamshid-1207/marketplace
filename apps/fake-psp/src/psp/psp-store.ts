@@ -19,6 +19,9 @@ export interface PspPayment {
   captures: number;
   voids: number;
   declines: number;
+  /** Возвраты (SD-03, п. 7): частичные, в сумме не больше списанного. */
+  refunds: number;
+  refundedMinor: number;
 }
 
 export type PspEventType = 'payment.authorized' | 'payment.expired';
@@ -95,6 +98,8 @@ export class PspStore {
       captures: 0,
       voids: 0,
       declines: 0,
+      refunds: 0,
+      refundedMinor: 0,
     };
     this.payments.set(id, payment);
     return { status: 201, body: view(payment) };
@@ -132,6 +137,18 @@ export class PspStore {
     return this.transition(id, ['requires_action', 'authorized'], (p) => {
       p.status = 'voided';
       p.voids++;
+    });
+  }
+
+  /** Возврат части списанной суммы: в сумме возвратов не больше списания. */
+  refund(id: string, amountMinor: number): PspResponse {
+    const payment = this.payments.get(id);
+    if (payment && payment.refundedMinor + amountMinor > payment.amountMinor) {
+      return error(422, 'refund_exceeds_capture', 'возврат больше списанной суммы');
+    }
+    return this.transition(id, ['captured'], (p) => {
+      p.refunds++;
+      p.refundedMinor += amountMinor;
     });
   }
 

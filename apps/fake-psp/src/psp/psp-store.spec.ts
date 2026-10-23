@@ -108,6 +108,32 @@ describe('PspStore', () => {
     expect(events.map((e) => e.type)).toEqual(['payment.authorized', 'payment.expired']);
   });
 
+  it('возврат: только списанного, частями, в сумме не больше списания', () => {
+    const { store, create } = setup();
+    const { id } = create();
+    store.authorize(id);
+    expect(store.refund(id, 1_000).status).toBe(422); // ещё не списан
+    store.capture(id);
+    expect(store.refund(id, 4_000).status).toBe(200);
+    expect(store.refund(id, 6_000).status).toBe(200);
+    expect(store.refund(id, 1).body).toMatchObject({ error: { code: 'refund_exceeds_capture' } });
+    expect(store.get(id)).toMatchObject({ refunds: 2, refundedMinor: 10_000, status: 'captured' });
+  });
+
+  it('повтор возврата с тем же ключом не возвращает второй раз', () => {
+    const { store, create } = setup();
+    const { id } = create();
+    store.authorize(id);
+    store.capture(id);
+    const refund = () =>
+      store.idempotent('pay-1:refund:sub-1', { id, amountMinor: 3_000 }, () =>
+        store.refund(id, 3_000),
+      );
+    expect(refund().status).toBe(200);
+    expect(refund().status).toBe(200);
+    expect(store.get(id)?.refunds).toBe(1);
+  });
+
   it('неизвестный платёж — 404', () => {
     const { store } = setup();
     expect(store.capture('psp_nope').status).toBe(404);

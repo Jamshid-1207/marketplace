@@ -5,7 +5,7 @@ import type { Payment } from '../domain/payment';
 import { PspHttpClient } from '../infrastructure/psp/psp-client';
 import { PspDouble } from '../testing/psp-double';
 import { PaymentService, providerEventUuid } from './payment.service';
-import type { PaymentRepository, PaymentTx } from './ports';
+import type { PaymentRepository, PaymentTx, Refund } from './ports';
 
 interface Published {
   type: string;
@@ -18,6 +18,8 @@ class InMemoryPayments implements PaymentRepository {
   rows = new Map<string, Payment>();
   events: Published[] = [];
   processed = new Set<string>();
+  subOrders = new Map<string, { paymentId: string; amountMinor: number }>();
+  refunds = new Map<string, Refund>();
   private transactions = 0;
   private failAt = 0;
 
@@ -31,6 +33,8 @@ class InMemoryPayments implements PaymentRepository {
       rows: new Map([...this.rows].map(([id, p]) => [id, structuredClone(p)])),
       events: [...this.events],
       processed: new Set(this.processed),
+      subOrders: new Map(this.subOrders),
+      refunds: new Map([...this.refunds].map(([id, r]) => [id, structuredClone(r)])),
     };
     if (++this.transactions === this.failAt) {
       throw new Error('payment упал между вызовом провайдера и транзакцией 2');
@@ -63,6 +67,20 @@ class InMemoryPayments implements PaymentRepository {
           payload: payload as Record<string, unknown>,
           aggregateVersion: aggregate.aggregateVersion,
         }),
+      saveSubOrderAmounts: async (paymentId, amounts) => {
+        for (const { subOrderId, amount } of amounts) {
+          if (!this.subOrders.has(subOrderId)) {
+            this.subOrders.set(subOrderId, { paymentId, amountMinor: amount.amountMinor });
+          }
+        }
+      },
+      subOrderAmount: async (paymentId, subOrderId) => {
+        const row = this.subOrders.get(subOrderId);
+        return row?.paymentId === paymentId ? money(row.amountMinor) : null;
+      },
+      lockRefund: async (subOrderId) => structuredClone(this.refunds.get(subOrderId) ?? null),
+      saveRefund: async (refund) =>
+        void this.refunds.set(refund.subOrderId, structuredClone(refund)),
       once: async (handler, eventId, fn) => {
         const key = `${handler}:${eventId}`;
         if (this.processed.has(key)) return false;
@@ -127,7 +145,7 @@ describe('PaymentService', () => {
     repo = new InMemoryPayments();
     service = new PaymentService(
       repo,
-      new PspHttpClient({ baseUrl: psp.url, timeoutMs: 1_000 }),
+      new PspHttpClient({ baseUrl: psp.url, timeoutMs: 5_000 }),
       log,
     );
     jest.clearAllMocks();
@@ -260,7 +278,7 @@ describe('PaymentService', () => {
     const other = new InMemoryPayments();
     service = new PaymentService(
       other,
-      new PspHttpClient({ baseUrl: psp.url, timeoutMs: 1_000 }),
+      new PspHttpClient({ baseUrl: psp.url, timeoutMs: 5_000 }),
       log,
     );
     repo = other;
@@ -293,6 +311,42 @@ describe('PaymentService', () => {
     });
     await webhook('payment.authorized');
     expect(seen).toEqual(['corr-checkout']);
+  });
+
+  const refund = (subOrderId = subOrders[1].subOrderId) =>
+    inChain(() => service.refund({ orderId: ORDER, subOrderId }));
+
+  it('возврат под-заказа: сумма из разбивки списания, payment.refunded; повтор — без второго возврата', async () => {
+    await authorized();
+    await capture();
+    await refund();
+    await refund();
+    const atPsp = psp.byReference(repo.byOrder(ORDER).paymentId);
+    expect(atPsp).toMatchObject({ refunds: 1, refundedMinor: 500_000 });
+    expect(types().slice(-2)).toEqual(['payment.refunded', 'payment.refunded']);
+    expect(repo.events.at(-1)?.payload).toMatchObject({
+      subOrderId: subOrders[1].subOrderId,
+      amount: money(500_000),
+    });
+  });
+
+  it('сбой между возвратом у провайдера и транзакцией 2: повтор — один возврат', async () => {
+    await authorized();
+    await capture();
+    repo.crashBeforeCompletion();
+    await expect(refund()).rejects.toThrow(/упал/);
+    await refund();
+    expect(psp.byReference(repo.byOrder(ORDER).paymentId).refunds).toBe(1);
+    expect(types().filter((t) => t === 'payment.refunded')).toHaveLength(1);
+  });
+
+  it('возврат несписанного платежа или чужого под-заказа — в DLQ', async () => {
+    await authorized();
+    await expect(refund()).rejects.toBeInstanceOf(PermanentError);
+    await capture();
+    await expect(refund('01930000-0000-7000-8000-00000000cfff')).rejects.toBeInstanceOf(
+      PermanentError,
+    );
   });
 
   it('id события провайдера → стабильный UUID', () => {

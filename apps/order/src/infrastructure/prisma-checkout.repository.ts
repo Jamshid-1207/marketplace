@@ -7,17 +7,25 @@ import {
   type CancelReason,
   type CheckoutState,
   type PayloadOf,
+  type SubOrderStatus,
   type SubOrderSummary,
 } from '@repo/contracts';
 import { idempotent } from '@repo/idempotency';
 import { outbox } from '@repo/outbox';
-import type { CheckoutRepository, CheckoutTx, LockedSaga, NewOrder } from '../application/ports';
+import type {
+  CheckoutRepository,
+  CheckoutTx,
+  LockedSaga,
+  NewOrder,
+  SubOrderRecord,
+} from '../application/ports';
 import type { CheckoutSaga } from '../domain/checkout';
 import type { CatalogItem } from '../domain/order';
 import type { Prisma } from '../generated/prisma/client';
 import { PrismaService } from './prisma.service';
 
-const ACTIVE_STATES = ['AWAITING_PAYMENT', 'CAPTURING'];
+/** Состояния с дедлайном (ADR-0005, п. 6). */
+const ACTIVE_STATES = ['RESERVING', 'AWAITING_PAYMENT', 'COMMITTING', 'CAPTURING'];
 
 class PrismaCheckoutTx implements CheckoutTx {
   constructor(private readonly tx: Prisma.TransactionClient) {}
@@ -100,6 +108,44 @@ class PrismaCheckoutTx implements CheckoutTx {
         data: { status: subOrderStatus },
       });
     }
+  }
+
+  async lockSubOrder(subOrderId: string): Promise<SubOrderRecord | null> {
+    const rows = await this.tx.$queryRaw<{ sub_order_id: string }[]>`
+      SELECT sub_order_id FROM sub_orders WHERE sub_order_id = ${subOrderId}::uuid FOR UPDATE`;
+    if (rows.length === 0) return null;
+    const sub = await this.tx.subOrder.findUniqueOrThrow({
+      where: { subOrderId },
+      include: {
+        order: { include: { lines: { where: { subOrderId }, orderBy: { skuId: 'asc' } } } },
+      },
+    });
+    return {
+      subOrderId,
+      orderId: sub.orderId,
+      sellerId: sub.sellerId,
+      buyerId: sub.order.buyerId,
+      status: sub.status as SubOrderStatus, // ограничено CHECK в базе
+      amount: money(toSafeNumber(sub.amountMinor)),
+      lines: sub.order.lines.map((line) => ({
+        skuId: line.skuId,
+        qty: line.qty,
+        unitPrice: money(toSafeNumber(line.unitPriceMinor)),
+        categoryPath: line.categoryPath,
+      })),
+      refundStatus: sub.refundStatus as SubOrderRecord['refundStatus'],
+    };
+  }
+
+  async saveSubOrder(
+    subOrderId: string,
+    changes: {
+      status?: SubOrderStatus;
+      refundStatus?: 'REQUESTED' | 'REFUNDED';
+      refundRequestedAt?: Date;
+    },
+  ): Promise<void> {
+    await this.tx.subOrder.update({ where: { subOrderId }, data: changes });
   }
 
   async publish<D extends AnyMessageDefinition>(
@@ -209,6 +255,40 @@ export class PrismaCheckoutRepository implements CheckoutRepository {
       correlationId: row.correlationId,
       traceHeaders: row.traceHeaders as Record<string, string>,
     }));
+  }
+
+  async findSubOrderOrder(
+    actor: { kind: 'buyer'; userId: string } | { kind: 'seller'; sellerId: string },
+    subOrderId: string,
+    orderId?: string,
+  ): Promise<string | null> {
+    const sub = await this.prisma.subOrder.findFirst({
+      where:
+        actor.kind === 'seller'
+          ? { subOrderId, sellerId: actor.sellerId }
+          : { subOrderId, orderId, order: { buyerId: actor.userId } },
+      select: { orderId: true },
+    });
+    return sub?.orderId ?? null;
+  }
+
+  async staleRefunds(before: Date) {
+    return this.prisma.subOrder.findMany({
+      where: {
+        refundStatus: 'REQUESTED',
+        refundRequestedAt: { lt: before },
+        refundAlertedAt: null,
+      },
+      select: { orderId: true, subOrderId: true },
+      take: 100,
+    });
+  }
+
+  async markRefundAlerted(subOrderId: string): Promise<void> {
+    await this.prisma.subOrder.update({
+      where: { subOrderId },
+      data: { refundAlertedAt: new Date() },
+    });
   }
 
   async deleteIdempotencyKeysOlderThan(date: Date): Promise<number> {

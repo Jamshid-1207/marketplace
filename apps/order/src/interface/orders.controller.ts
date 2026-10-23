@@ -23,6 +23,8 @@ import { z } from 'zod';
 import { CheckoutService } from '../application/checkout.service';
 import { InvalidCursorError, OrderQueries } from '../application/order.queries';
 import { IdempotencyKeyReusedError, UnavailableSkusError } from '../application/ports';
+import { SubOrderService } from '../application/sub-order.service';
+import { subOrderHttp } from './seller-sub-orders.controller';
 
 type Buyer = AccessScope & { kind: 'buyer' };
 
@@ -37,7 +39,21 @@ export class OrdersController {
   constructor(
     private readonly checkout: CheckoutService,
     private readonly queries: OrderQueries,
+    private readonly subOrders: SubOrderService,
   ) {}
+
+  /** Покупатель отменяет под-заказ своего заказа до отгрузки (SD-03, п. 6.3). */
+  @Post(':orderId/sub-orders/:id/cancel')
+  @HttpCode(200)
+  cancelSubOrder(
+    @BuyerScope() buyer: Buyer,
+    @Param('orderId', new ParseUUIDPipe()) orderId: string,
+    @Param('id', new ParseUUIDPipe()) subOrderId: string,
+  ) {
+    return subOrderHttp(() =>
+      this.subOrders.act({ kind: 'buyer', userId: buyer.userId }, subOrderId, 'cancel', orderId),
+    );
+  }
 
   @Post()
   @HttpCode(202)

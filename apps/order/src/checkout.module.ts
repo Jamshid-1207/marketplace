@@ -2,16 +2,22 @@ import { Module } from '@nestjs/common';
 import { PinoLogger } from 'nestjs-pino';
 import { CheckoutService } from './application/checkout.service';
 import { OrderQueries } from './application/order.queries';
+import { SubOrderService } from './application/sub-order.service';
 import { CONFIG, type Config } from './config';
 import { PrismaCheckoutRepository } from './infrastructure/prisma-checkout.repository';
 import { PrismaOrderReader } from './infrastructure/prisma-order.reader';
+import { PrismaSellerSubOrderReader } from './infrastructure/prisma-seller-sub-order.reader';
 import { DeadlineScheduler } from './interface/deadline.scheduler';
 import { OrdersController } from './interface/orders.controller';
-import { PaymentEventsHandler } from './interface/payment-events.handler';
+import { SagaEventsHandler } from './interface/saga-events.handler';
+import {
+  SELLER_SUB_ORDER_READER,
+  SellerSubOrdersController,
+} from './interface/seller-sub-orders.controller';
 
-/** Оформление заказа (SD-02, п. 5): HTTP, saga, планировщик дедлайнов. */
+/** Оформление заказа и под-заказы (SD-02, п. 5; SD-03, п. 6): HTTP, saga, планировщик. */
 @Module({
-  controllers: [OrdersController],
+  controllers: [OrdersController, SellerSubOrdersController],
   providers: [
     PrismaCheckoutRepository,
     PrismaOrderReader,
@@ -23,7 +29,9 @@ import { PaymentEventsHandler } from './interface/payment-events.handler';
         return new CheckoutService(
           repository,
           {
+            reserveDeadlineMs: config.RESERVE_DEADLINE_MS,
             paymentDeadlineMs: config.PAYMENT_DEADLINE_MS,
+            commitDeadlineMs: config.COMMIT_DEADLINE_MS,
             captureDeadlineMs: config.CAPTURE_DEADLINE_MS,
           },
           log,
@@ -35,7 +43,16 @@ import { PaymentEventsHandler } from './interface/payment-events.handler';
       inject: [PrismaOrderReader],
       useFactory: (reader: PrismaOrderReader) => new OrderQueries(reader),
     },
-    PaymentEventsHandler,
+    {
+      provide: SubOrderService,
+      inject: [PrismaCheckoutRepository, CONFIG, PinoLogger],
+      useFactory: (repository: PrismaCheckoutRepository, config: Config, log: PinoLogger) => {
+        log.setContext('sub-orders');
+        return new SubOrderService(repository, { refundAlertMs: config.REFUND_ALERT_MS }, log);
+      },
+    },
+    { provide: SELLER_SUB_ORDER_READER, useClass: PrismaSellerSubOrderReader },
+    SagaEventsHandler,
     DeadlineScheduler,
   ],
 })

@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { PinoLogger } from 'nestjs-pino';
 import { CheckoutService } from '../application/checkout.service';
+import { SubOrderService } from '../application/sub-order.service';
 import { CONFIG, RUN_MODE, type Config, type RunMode } from '../config';
 
 const KEYS_CLEANUP_MS = 60 * 60_000;
@@ -22,6 +23,7 @@ export class DeadlineScheduler implements OnApplicationBootstrap, OnApplicationS
 
   constructor(
     private readonly checkout: CheckoutService,
+    private readonly subOrders: SubOrderService,
     @Inject(CONFIG) private readonly config: Config,
     @Inject(RUN_MODE) private readonly mode: RunMode,
     private readonly log: PinoLogger,
@@ -47,8 +49,9 @@ export class DeadlineScheduler implements OnApplicationBootstrap, OnApplicationS
   tick(): Promise<void> {
     this.running ??= this.checkout
       .processDeadlines()
-      .then((processed) => {
+      .then(async (processed) => {
         if (processed > 0) this.log.info({ processed }, 'обработаны просроченные saga');
+        await this.subOrders.alertStaleRefunds();
       })
       .catch((err: unknown) => this.log.error({ err }, 'тик планировщика не удался'))
       .finally(() => {

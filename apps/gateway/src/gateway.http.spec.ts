@@ -44,12 +44,14 @@ describe('gateway по HTTP', () => {
   let app: INestApplication;
   let order: Awaited<ReturnType<typeof echoService>>;
   let payment: Awaited<ReturnType<typeof echoService>>;
+  let erp: Awaited<ReturnType<typeof echoService>>;
 
   beforeAll(async () => {
-    [order, payment] = await Promise.all([echoService(), echoService()]);
+    [order, payment, erp] = await Promise.all([echoService(), echoService(), echoService()]);
     app = await start({
       ORDER_URL: order.url,
       PAYMENT_URL: payment.url,
+      ERP_URL: erp.url,
       DEV_AUTH: 'true',
       RATE_LIMIT_PER_MINUTE: '5',
     });
@@ -57,7 +59,7 @@ describe('gateway по HTTP', () => {
 
   afterAll(async () => {
     await app.close();
-    await Promise.all([order, payment].map((s) => new Promise((r) => s.server.close(r))));
+    await Promise.all([order, payment, erp].map((s) => new Promise((r) => s.server.close(r))));
   });
 
   const http = () => request(app.getHttpServer());
@@ -129,6 +131,28 @@ describe('gateway по HTTP', () => {
 });
 
 describe('gateway: сбои и настройки', () => {
+  it('кабинет продавца: под-заказы — в order, склады и остатки — в erp', async () => {
+    const [order, erp] = await Promise.all([echoService(), echoService()]);
+    const app = await start({ ORDER_URL: order.url, ERP_URL: erp.url, DEV_AUTH: 'true' });
+    const http = () => request(app.getHttpServer());
+    const login = await http().post('/dev/login').send({ user: 'seller-a' });
+    const token = `Bearer ${login.body.accessToken}`;
+    await http()
+      .get('/api/seller/sub-orders?status=CONFIRMED')
+      .set('Authorization', token)
+      .expect(200);
+    expect(order.received.at(-1)?.url).toBe('/seller/sub-orders?status=CONFIRMED');
+    await http().post('/api/seller/sub-orders/abc/ship').set('Authorization', token).expect(200);
+    expect(order.received.at(-1)?.url).toBe('/seller/sub-orders/abc/ship');
+    await http().get('/api/seller/warehouses').set('Authorization', token).expect(200);
+    expect(erp.received.at(-1)?.url).toBe('/seller/warehouses');
+    await http().put('/api/seller/stock/sku-1/threshold').set('Authorization', token).expect(200);
+    expect(erp.received.at(-1)?.url).toBe('/seller/stock/sku-1/threshold');
+    expect((await http().get('/api/seller/warehouses')).status).toBe(401);
+    await app.close();
+    await Promise.all([order, erp].map((s) => new Promise((r) => s.server.close(r))));
+  });
+
   it('сервис недоступен — 502', async () => {
     const app = await start({ ORDER_URL: 'http://127.0.0.1:1', DEV_AUTH: 'true' });
     const token = (await request(app.getHttpServer()).post('/dev/login').send({ user: 'buyer-1' }))

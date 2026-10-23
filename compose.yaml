@@ -253,7 +253,9 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
       # ключи JWT до этапа 5 — у gateway (SD-02, п. 3.1)
       JWKS_URL: http://gateway:3000/.well-known/jwks.json
+      RESERVE_DEADLINE_MS: ${RESERVE_DEADLINE_MS:-30000}
       PAYMENT_DEADLINE_MS: ${PAYMENT_DEADLINE_MS:-900000}
+      COMMIT_DEADLINE_MS: ${COMMIT_DEADLINE_MS:-300000}
       CAPTURE_DEADLINE_MS: ${CAPTURE_DEADLINE_MS:-300000}
       CHECKOUT_TICK_MS: ${CHECKOUT_TICK_MS:-5000}
     healthcheck:
@@ -293,6 +295,7 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
       ORDER_URL: http://order:3000
       PAYMENT_URL: http://payment:3000
+      ERP_URL: http://erp:3000
       # заглушка входа до этапа 5: сервиса auth ещё нет (SD-02, п. 3.1)
       DEV_AUTH: ${DEV_AUTH:-true}
     ports:

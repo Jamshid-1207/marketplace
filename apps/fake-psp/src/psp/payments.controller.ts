@@ -12,6 +12,10 @@ import type { Response } from 'express';
 import { z } from 'zod';
 import { PspStore, view, type PspResponse } from './psp-store';
 
+const RefundBody = z.object({
+  amountMinor: z.number().int().positive().refine(Number.isSafeInteger),
+});
+
 const CreatePaymentBody = z.object({
   merchantReference: z.string().min(1).max(100),
   amountMinor: z.number().int().positive().refine(Number.isSafeInteger),
@@ -64,6 +68,24 @@ export class PaymentsController {
     return send(
       res,
       this.store.idempotent(requireKey(key), { op: 'capture', id }, () => this.store.capture(id)),
+    );
+  }
+
+  @Post(':id/refund')
+  refund(
+    @Param('id') id: string,
+    @Headers('idempotency-key') key: string | undefined,
+    @Body() body: unknown,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const parsed = RefundBody.safeParse(body);
+    if (!parsed.success) throw new BadRequestException(z.prettifyError(parsed.error));
+    const { amountMinor } = parsed.data;
+    return send(
+      res,
+      this.store.idempotent(requireKey(key), { op: 'refund', id, amountMinor }, () =>
+        this.store.refund(id, amountMinor),
+      ),
     );
   }
 

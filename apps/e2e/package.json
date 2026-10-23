@@ -12,6 +12,7 @@
       "@repo/gateway",
       "@repo/order",
       "@repo/payment",
+      "@repo/erp",
       "@repo/fake-psp"
     ],
     "targets": {

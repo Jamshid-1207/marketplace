@@ -44,6 +44,7 @@
             "PORT": "3000",
             "ORDER_URL": "http://localhost:3101",
             "PAYMENT_URL": "http://localhost:3102",
+            "ERP_URL": "http://localhost:3103",
             "DEV_AUTH": "true",
             "LOG_PRETTY": "true"
           }

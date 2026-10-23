@@ -6,6 +6,7 @@ import {
   PaymentCaptureFailedV1,
   PaymentCreatedV1,
   PaymentFailedV1,
+  PaymentRefundedV1,
   sum,
   type AnyMessageDefinition,
   type Money,
@@ -34,6 +35,7 @@ import {
 import {
   PspRejectedError,
   type Log,
+  type Refund,
   type PaymentRepository,
   type PaymentTx,
   type PspGateway,
@@ -111,6 +113,13 @@ export class PaymentService {
           `сумма под-заказов ${total.amountMinor} ≠ сумме платежа ${current.amount.amountMinor}`,
         );
       }
+      if (current) {
+        // разбивка — источник суммы возврата при отмене под-заказа (ADR-0005, п. 8)
+        await tx.saveSubOrderAmounts(
+          current.paymentId,
+          command.subOrders.map((s) => ({ subOrderId: s.subOrderId, amount: s.amount })),
+        );
+      }
       return (await this.proceed(tx, current, decideCapture(current), 'capture')) ? current : null;
     });
     if (!payment) return;
@@ -151,6 +160,75 @@ export class PaymentService {
       current.status = 'CANCELLED';
       current.providerPaymentId = providerPaymentId;
       await this.emit(tx, current, PaymentCancelledV1, {});
+    });
+  }
+
+  /**
+   * Возврат суммы отменённого под-заказа (SD-03, п. 7): только из `CAPTURED`. Три шага, как у
+   * списания: `REFUNDING` → вызов провайдера с ключом под-заказа → `REFUNDED` и событие.
+   */
+  async refund(command: { orderId: string; subOrderId: string }): Promise<void> {
+    const ref = { orderId: command.orderId, subOrderId: command.subOrderId };
+    const step = await this.payments.transaction(async (tx) => {
+      const payment = await tx.lockByOrderId(command.orderId);
+      if (payment?.status !== 'CAPTURED') {
+        this.log.error({ ...ref, status: payment?.status, alert: true }, 'возврат без списания');
+        throw new PermanentError(`RefundPayment: платёж заказа ${command.orderId} не списан`);
+      }
+      const existing = await tx.lockRefund(command.subOrderId);
+      if (existing?.status === 'REFUNDED') {
+        await this.emit(tx, payment, PaymentRefundedV1, {
+          subOrderId: command.subOrderId,
+          amount: existing.amount,
+        });
+        return null;
+      }
+      if (existing?.status === 'FAILED') {
+        this.log.error({ ...ref, alert: true, reason: existing.failureReason }, 'возврат отклонён');
+        return null;
+      }
+      if (existing) return { payment, refund: existing };
+      const amount = await tx.subOrderAmount(payment.paymentId, command.subOrderId);
+      if (!amount) throw new PermanentError(`под-заказа ${command.subOrderId} нет в списании`);
+      const refund: Refund = {
+        paymentId: payment.paymentId,
+        subOrderId: command.subOrderId,
+        amount,
+        status: 'REFUNDING',
+        failureReason: null,
+      };
+      await tx.saveRefund(refund);
+      return { payment, refund };
+    });
+    if (!step) return;
+
+    const { payment, refund } = step;
+    const result = await this.psp.refund(
+      payment.paymentId,
+      provider(payment),
+      refund.subOrderId,
+      refund.amount,
+    );
+    await this.payments.transaction(async (tx) => {
+      const current = await tx.lockById(payment.paymentId);
+      const pending = await tx.lockRefund(refund.subOrderId);
+      if (!current || pending?.status !== 'REFUNDING') return;
+      if (result.status === 'refunded') {
+        pending.status = 'REFUNDED';
+        await tx.saveRefund(pending);
+        await this.emit(tx, current, PaymentRefundedV1, {
+          subOrderId: pending.subOrderId,
+          amount: pending.amount,
+        });
+      } else {
+        pending.status = 'FAILED';
+        pending.failureReason = result.reason;
+        await tx.saveRefund(pending);
+        this.log.error(
+          { ...ref, alert: true, reason: result.reason },
+          'возврат отклонён провайдером',
+        );
+      }
     });
   }
 

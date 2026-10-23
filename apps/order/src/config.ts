@@ -17,18 +17,32 @@ export const ConfigSchema = z.object({
   KAFKA_FROM_BEGINNING: z.stringbool().default(false),
   /** Ключи проверки JWT: до этапа 5 — gateway (SD-02, п. 3.1). */
   JWKS_URL: z.url().default('http://localhost:3000/.well-known/jwks.json'),
+  /** Дедлайн ответа erp на резерв (ADR-0005, п. 6): потом заказ отменяется. */
+  RESERVE_DEADLINE_MS: z.coerce.number().int().positive().default(30_000),
   /** Дедлайн оплаты покупателем (ADR-0005, п. 6): потом заказ отменяется. */
   PAYMENT_DEADLINE_MS: z.coerce
     .number()
     .int()
     .positive()
     .default(15 * 60_000),
+  /** Дедлайн закрепления резерва: потом `CommitStock` повторяется с алертом. */
+  COMMIT_DEADLINE_MS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(5 * 60_000),
   /** Дедлайн списания: потом `CapturePayment` повторяется с алертом. */
   CAPTURE_DEADLINE_MS: z.coerce
     .number()
     .int()
     .positive()
     .default(5 * 60_000),
+  /** Возврат при отмене под-заказа не подтверждён за это время — алерт (ADR-0005, п. 5). */
+  REFUND_ALERT_MS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(60 * 60_000),
   /** Как часто планировщик ищет просроченные saga. */
   CHECKOUT_TICK_MS: z.coerce.number().int().positive().default(5_000),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),

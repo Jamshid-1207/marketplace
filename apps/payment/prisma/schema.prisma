@@ -56,3 +56,28 @@ model Payment {
 
   @@map("payments")
 }
+
+/// Разбивка списания по под-заказам (SD-03, п. 7): источник суммы возврата
+model PaymentSubOrder {
+  subOrderId  String @id @map("sub_order_id") @db.Uuid
+  paymentId   String @map("payment_id") @db.Uuid
+  amountMinor BigInt @map("amount_minor")
+
+  @@index([paymentId], map: "payment_sub_orders_payment")
+  @@map("payment_sub_orders")
+}
+
+/// Возврат суммы отменённого под-заказа: один на под-заказ
+model Refund {
+  subOrderId    String   @id @map("sub_order_id") @db.Uuid
+  paymentId     String   @map("payment_id") @db.Uuid
+  amountMinor   BigInt   @map("amount_minor")
+  /// REFUNDING, REFUNDED, FAILED
+  status        String
+  failureReason String?  @map("failure_reason")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([paymentId], map: "refunds_payment")
+  @@map("refunds")
+}

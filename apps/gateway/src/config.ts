@@ -9,6 +9,7 @@ export const ConfigSchema = z.object({
   /** Внутренние сервисы: наружу открыт только gateway (ADR-0001, п. 1; SD-02, п. 3.1). */
   ORDER_URL: z.url().default('http://localhost:3101'),
   PAYMENT_URL: z.url().default('http://localhost:3102'),
+  ERP_URL: z.url().default('http://localhost:3103'),
   /** Сколько ждать ответа сервиса: дольше — `504`. */
   UPSTREAM_TIMEOUT_MS: z.coerce.number().int().positive().default(10_000),
   /**

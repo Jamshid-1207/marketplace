@@ -112,6 +112,8 @@ export const psp = {
   async payment(pspId: string) {
     return (
       await call<{
+        refunds: number;
+        refundedMinor: number;
         status: string;
         amountMinor: number;
         captures: number;

@@ -7,7 +7,7 @@ cd "$(dirname "$0")/../.."
 [[ -f .env ]] || { echo 'нет .env: cp .env.example .env' >&2; exit 1; }
 
 compose() { docker compose -f compose.yaml -f compose.e2e.yaml --profile core "$@"; }
-SERVICES=(gateway order payment fake-psp)
+SERVICES=(gateway order payment erp fake-psp)
 
 finish() {
   local status=$?

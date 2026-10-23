@@ -1,5 +1,10 @@
 import { Injectable, type OnModuleInit } from '@nestjs/common';
-import { CancelPaymentV1, CapturePaymentV1, CreatePaymentV1 } from '@repo/contracts';
+import {
+  CancelPaymentV1,
+  CapturePaymentV1,
+  CreatePaymentV1,
+  RefundPaymentV1,
+} from '@repo/contracts';
 import { ConsumerRunner } from '@repo/kafka';
 import { PaymentService } from '../application/payment.service';
 
@@ -18,6 +23,7 @@ export class PaymentCommandsHandler implements OnModuleInit {
     this.runner
       .on(CreatePaymentV1, 'payment.create-payment', (e) => this.payments.create(e.payload))
       .on(CapturePaymentV1, 'payment.capture-payment', (e) => this.payments.capture(e.payload))
-      .on(CancelPaymentV1, 'payment.cancel-payment', (e) => this.payments.cancel(e.payload));
+      .on(CancelPaymentV1, 'payment.cancel-payment', (e) => this.payments.cancel(e.payload))
+      .on(RefundPaymentV1, 'payment.refund-payment', (e) => this.payments.refund(e.payload));
   }
 }

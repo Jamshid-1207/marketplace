@@ -1,6 +1,6 @@
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import { DevTokenIssuer } from '@repo/auth';
+import { DevTokenIssuer, sellerEndpoints } from '@repo/auth';
 import { money, newId, ReserveStockV1 } from '@repo/contracts';
 import { runInNewChain } from '@repo/observability';
 import { outbox } from '@repo/outbox';
@@ -313,5 +313,25 @@ describe('erp: склад (интеграция)', () => {
       );
       expect((await http().get('/seller/warehouses')).status).toBe(401);
     });
+  });
+
+  it('каждый эндпоинт кабинета (@SellerScope): сотрудник без права — 403 (ADR-0006, п. 8)', async () => {
+    const endpoints = sellerEndpoints(app);
+    expect(endpoints.length).toBeGreaterThan(0);
+    for (const endpoint of endpoints) {
+      const other = (['warehouse', 'orders'] as const).find((p) => p !== endpoint.permission);
+      const token = await issuer.issue({
+        sub: newId(),
+        roles: ['buyer', 'seller_manager'],
+        sellerId: newId(),
+        scopes: [other as 'warehouse' | 'orders'],
+      });
+      const path = endpoint.path.replace(/:[^/]+/g, newId());
+      const res = await request(app.getHttpServer())
+        [endpoint.method.toLowerCase() as 'get' | 'post' | 'patch' | 'put'](path)
+        .set('Authorization', `Bearer ${token}`)
+        .send({});
+      expect({ endpoint, status: res.status }).toEqual({ endpoint, status: 403 });
+    }
   });
 });

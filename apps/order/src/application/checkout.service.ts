@@ -1,14 +1,4 @@
-import {
-  CancelPaymentV1,
-  CapturePaymentV1,
-  CreatePaymentV1,
-  newId,
-  OrderCancelledV1,
-  OrderConfirmedV1,
-  OrderCreatedV1,
-  type CheckoutState,
-  type CreateOrderRequest,
-} from '@repo/contracts';
+import { newId, type CheckoutState, type CreateOrderRequest } from '@repo/contracts';
 import {
   currentTraceHeaders,
   requireContext,
@@ -20,13 +10,12 @@ import {
   startCheckout,
   transition,
   type OrderFacts,
-  type SagaCommand,
-  type OrderEvent,
   type SagaInput,
   type Transition,
   type CheckoutSaga,
 } from '../domain/checkout';
 import { priceOrder } from '../domain/order';
+import { publishCommand, publishOrderEvent } from './publish';
 import {
   IdempotencyKeyReusedError,
   UnavailableSkusError,
@@ -36,12 +25,14 @@ import {
 } from './ports';
 
 export interface CheckoutSettings {
+  reserveDeadlineMs: number;
   paymentDeadlineMs: number;
+  commitDeadlineMs: number;
   captureDeadlineMs: number;
   now?: () => Date;
 }
 
-/** Обработчик событий payment в `processed_events`. */
+/** Обработчик ответов erp и payment в `processed_events`. */
 export const CHECKOUT_HANDLER = 'order.checkout';
 
 /** Сколько просроченных saga берёт один тик планировщика (ADR-0005, п. 6). */
@@ -57,7 +48,7 @@ export function requestHash(request: CreateOrderRequest): string {
 }
 
 /**
- * Оформление заказа (ADR-0005; SD-02, п. 5). Каждый вход — `POST /orders`, событие payment,
+ * Оформление заказа (ADR-0005; SD-03, п. 6). Каждый вход — `POST /orders`, ответ erp или payment,
  * дедлайн — в одной транзакции: блокировка saga → `transition` → состояние, под-заказы, outbox.
  */
 export class CheckoutService {
@@ -117,8 +108,8 @@ export class CheckoutService {
     return { orderId: facts.orderId, status: started.saga.state };
   }
 
-  /** Событие payment: переход saga ровно один раз на событие. */
-  async onPaymentEvent(orderId: string, eventId: string, input: SagaInput): Promise<void> {
+  /** Ответ участника saga (erp, payment): переход ровно один раз на событие. */
+  async onSagaEvent(orderId: string, eventId: string, input: SagaInput): Promise<void> {
     await this.checkout.transaction(async (tx) => {
       const locked = await tx.lockSaga(orderId);
       if (!locked) {
@@ -178,13 +169,15 @@ export class CheckoutService {
     if (!saved) return null;
     if (saved.requestHash !== hash) throw new IdempotencyKeyReusedError();
     const state = await this.checkout.transaction((tx) => tx.lockSaga(saved.orderId));
-    return { orderId: saved.orderId, status: state?.saga.state ?? 'AWAITING_PAYMENT' };
+    return { orderId: saved.orderId, status: state?.saga.state ?? 'RESERVING' };
   }
 
   private deadlines() {
     return {
       now: this.now(),
+      reserveMs: this.settings.reserveDeadlineMs,
       paymentMs: this.settings.paymentDeadlineMs,
+      commitMs: this.settings.commitDeadlineMs,
       captureMs: this.settings.captureDeadlineMs,
     };
   }
@@ -208,53 +201,11 @@ export class CheckoutService {
     }
     for (const event of result.events) {
       saga.version += 1;
-      await this.publishEvent(tx, event, saga.version);
+      await publishOrderEvent(tx, event, saga.version);
     }
     for (const command of result.commands) {
-      await this.publishCommand(tx, command, Math.max(saga.version, 1));
+      await publishCommand(tx, command, saga.version);
     }
     await tx.saveSaga(saga, result.subOrderStatus);
-  }
-
-  private async publishEvent(tx: CheckoutTx, event: OrderEvent, version: number): Promise<void> {
-    const aggregate = { aggregateId: event.orderId, aggregateVersion: version };
-    switch (event.type) {
-      case 'order.created': {
-        const { orderId, buyerId, total, sellerIds } = event;
-        return tx.publish(OrderCreatedV1, { orderId, buyerId, total, sellerIds }, aggregate);
-      }
-      case 'order.confirmed': {
-        const { orderId, buyerId, total, subOrders } = event;
-        return tx.publish(OrderConfirmedV1, { orderId, buyerId, total, subOrders }, aggregate);
-      }
-      case 'order.cancelled': {
-        const { orderId, buyerId, reason } = event;
-        return tx.publish(OrderCancelledV1, { orderId, buyerId, reason }, aggregate);
-      }
-    }
-  }
-
-  private async publishCommand(
-    tx: CheckoutTx,
-    command: SagaCommand,
-    version: number,
-  ): Promise<void> {
-    const aggregate = { aggregateId: command.orderId, aggregateVersion: version };
-    switch (command.type) {
-      case 'CreatePayment':
-        return tx.publish(
-          CreatePaymentV1,
-          { orderId: command.orderId, amount: command.amount },
-          aggregate,
-        );
-      case 'CapturePayment':
-        return tx.publish(
-          CapturePaymentV1,
-          { orderId: command.orderId, subOrders: command.subOrders },
-          aggregate,
-        );
-      case 'CancelPayment':
-        return tx.publish(CancelPaymentV1, { orderId: command.orderId }, aggregate);
-    }
   }
 }
