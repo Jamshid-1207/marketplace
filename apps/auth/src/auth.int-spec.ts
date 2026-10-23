@@ -285,5 +285,8 @@ describe('auth: учётные записи и токены (интеграци�
     expect(await prisma.membership.findUnique({ where: { userId: manager.userId } })).toMatchObject(
       { role: 'seller_manager', scopes: ['orders'] },
     );
+    // user.registered — по одному на пользователя, повтор seed событий не добавил
+    const events = await prisma.outbox.findMany({ where: { messageKey: admin.userId } });
+    expect(events.map((e) => (e.payload as { type: string }).type)).toEqual(['user.registered']);
   });
 });
