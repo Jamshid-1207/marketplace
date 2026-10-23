@@ -59,3 +59,27 @@ export async function untilHealthy(service: string): Promise<void> {
     { what: `${service} healthy`, timeoutMs: 120_000, intervalMs: 1_000 },
   );
 }
+
+/** Сервер закрыл простаивающее keep-alive соединение, а клиент успел его взять: запрос не ушёл. */
+function isStaleConnection(error: unknown): boolean {
+  const cause = (error as { cause?: { code?: string; message?: string } }).cause;
+  return (
+    error instanceof TypeError &&
+    (cause?.code === 'UND_ERR_SOCKET' || /other side closed/.test(cause?.message ?? ''))
+  );
+}
+
+/**
+ * `fetch` стенда. После `docker compose stop/start` тест простаивает дольше keep-alive сервера,
+ * и следующий запрос может попасть на уже закрытый сокет. Такой запрос до сервера не дошёл —
+ * один повтор безопасен; любая другая ошибка пробрасывается.
+ */
+export async function standFetch(url: string, init: RequestInit = {}): Promise<Response> {
+  const attempt = () => fetch(url, { ...init, signal: AbortSignal.timeout(15_000) });
+  try {
+    return await attempt();
+  } catch (error) {
+    if (!isStaleConnection(error)) throw error;
+    return attempt();
+  }
+}

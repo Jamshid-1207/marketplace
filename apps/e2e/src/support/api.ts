@@ -1,6 +1,6 @@
 import { DEV_CATALOG, type OrderView } from '@repo/contracts';
 import { randomUUID } from 'node:crypto';
-import { eventually, GATEWAY_URL, PSP_URL } from './stand';
+import { eventually, GATEWAY_URL, PSP_URL, standFetch } from './stand';
 
 export interface HttpResult<T = unknown> {
   status: number;
@@ -9,7 +9,7 @@ export interface HttpResult<T = unknown> {
 }
 
 async function call<T>(url: string, init: RequestInit = {}): Promise<HttpResult<T>> {
-  const res = await fetch(url, { ...init, signal: AbortSignal.timeout(15_000) });
+  const res = await standFetch(url, init);
   const text = await res.text();
   return {
     status: res.status,

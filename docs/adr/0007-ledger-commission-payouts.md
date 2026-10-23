@@ -1,6 +1,6 @@
 # ADR-0007: Деньги — журнал проводок, комиссия, удержание, выплаты
 
-**Статус:** Принято · **Дата:** 2026-10-22 · **Ревизия:** 2
+**Статус:** Принято · **Дата:** 2026-10-23 · **Ревизия:** 3
 
 ## Контекст
 
@@ -67,6 +67,10 @@
 | 5   | Продавец запросил выплату                         | API кабинета                            | `seller:{id}:available` | `payouts:in-transit`    | `X`     |
 | 6   | Выплата подтверждена                              | Webhook                                 | `payouts:in-transit`    | `cash:psp`              | `X`     |
 | 7   | Выплата не прошла                                 | Webhook                                 | `payouts:in-transit`    | `seller:{id}:available` | `X`     |
+| 8   | Провайдер отказал в возврате                      | Ответ провайдера на `RefundPayment`     | `refunds:in-transit`    | `seller:{id}:pending`   | `S − C` |
+|     |                                                   |                                         | `refunds:in-transit`    | `commission:deferred`   | `C`     |
+
+Операция 8 сторнирует операцию 3, расчёт снова `PENDING`, алерт (SD-04, решение 2). Без неё сумма зависла бы на `refunds:in-transit`. Возврат подтверждается ответом провайдера, а не webhook (SD-04, решение 1): проводки 3 и 4 пишутся в транзакциях 1 и 2 вызова провайдера.
 
 - В каждой операции дебет равен кредиту.
 - Снятие авторизации (`CancelPayment`) проводок не создаёт: деньги не двигались.
@@ -142,7 +146,7 @@ CREATE TABLE settlement_lines (
 CREATE TABLE ledger_transactions (
   id         uuid        PRIMARY KEY,
   kind       text        NOT NULL,   -- capture, hold_release, refund_requested, refund_completed,
-                                     -- payout_requested, payout_paid, payout_failed
+                                     -- refund_failed, payout_requested, payout_paid, payout_failed
   source_id  text        NOT NULL,   -- orderId, subOrderId, refundId или payoutId
   created_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE (kind, source_id)           -- одна проводка на операцию: повтор не удваивает деньги
@@ -241,6 +245,8 @@ CREATE TABLE account_balances (
   - два одновременных запроса выплаты на весь баланс — проходит один;
   - `UPDATE` записи журнала отклоняется базой;
   - несбалансированная проводка не коммитится, проводка без записей — тоже.
+
+В реализации id — `uuid`, а не `text` (SD-01, п. 6.1); `source_id` — id под-заказа или выплаты.
 
 ## Последствия
 

@@ -1,4 +1,4 @@
-import { GATEWAY_URL } from './stand';
+import { GATEWAY_URL, standFetch } from './stand';
 
 interface Result<T> {
   status: number;
@@ -11,14 +11,13 @@ async function request<T>(
   path: string,
   body?: unknown,
 ): Promise<Result<T>> {
-  const res = await fetch(`${GATEWAY_URL}/api${path}`, {
+  const res = await standFetch(`${GATEWAY_URL}/api${path}`, {
     method,
     headers: {
       authorization: `Bearer ${token}`,
       ...(body === undefined ? {} : { 'content-type': 'application/json' }),
     },
     body: body === undefined ? undefined : JSON.stringify(body),
-    signal: AbortSignal.timeout(15_000),
   });
   const text = await res.text();
   return { status: res.status, body: (text ? JSON.parse(text) : undefined) as T };
