@@ -5,6 +5,13 @@
 
 ## [Unreleased] · Этап 3: склад
 ### Added
+- **Шаг 3: `apps/erp`** (полный шаблон генератора, SD-03, п. 5).
+  - Данные: `warehouses` (приоритет, активность), `stock` (`on_hand`, `reserved`, CHECK `reserved ≤ on_hand`), `reservation_orders` и `reservations` (позиция заказа на одном складе, TTL у незакреплённой), `stock_thresholds`, `sales`, read-model `catalog_skus`. Seed складов и остатков — `dist/seed.js` в `erp-migrate` при `SEED_STOCK=true`, остатки повторно не сбрасываются.
+  - `ReserveStock` — всё или ничего, позиция целиком на первом по приоритету складе своего продавца; строки остатков блокируются в одном порядке `(warehouse_id, sku_id)`. Повтор — тот же ответ. `CommitStock` снимает TTL, истёкший резерв резервирует заново или отвечает `stock.commit-failed`. `ReleaseStock` — заказ или под-заказ, отгруженное не трогает.
+  - Планировщик TTL (`RESERVE_TTL_MS`, 30 мин) снимает незакреплённые резервы сам и публикует `stock.released { reason: expired }`.
+  - `sub-order.shipped` списывает остаток (`on_hand` и `reserved`); реестр продаж по `order.confirmed`, сторно по `sub-order.cancelled`; `stock.low` — один раз на пересечение порога.
+  - Кабинет `/seller/warehouses`, `/seller/stock`, `/seller/stock/adjustments`, `/seller/stock/:skuId/threshold` с `@SellerScope('warehouse')`: чужое — `404`, остаток ниже резерва — `409`.
+  - Тесты: 9 unit (выбор склада, порог), интеграционные — гонка за последний товар, повтор команды, TTL, закрепление после TTL, отгрузка и отмена под-заказа, `stock.low`, реестр продаж, кабинет по HTTP с изоляцией.
 - **Шаг 2: `@SellerScope(permission)`** в `libs/auth`: область продавца из токена, владелец — все права магазина, сотрудник — только выданные, иначе `403`; `@CurrentSeller()`; `sellerEndpoints(app)` — список эндпоинтов кабинета из метаданных для теста изоляции (ADR-0006, п. 8).
 - **Шаг 1: контракты склада и под-заказа** (`libs/contracts`).
   - Команды `erp.commands`: `ReserveStock` (позиции с `subOrderId`, `sellerId`, `skuId`), `CommitStock`, `ReleaseStock` (`subOrderId` необязателен); `RefundPayment` в `payment.commands`.

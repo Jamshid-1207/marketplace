@@ -1,0 +1,141 @@
+// Схема erp_db (ADR-0004). Таблицы outbox и processed_events принадлежат libs (SD-01, п. 6):
+// их DDL — в первой миграции, а модели здесь, чтобы prisma migrate dev не видел расхождений.
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Outbox {
+  id          BigInt    @id @default(autoincrement())
+  eventId     String    @unique @map("event_id") @db.Uuid
+  topic       String
+  messageKey  String    @map("message_key")
+  payload     Json
+  headers     Json      @default("{}")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  publishedAt DateTime? @map("published_at") @db.Timestamptz(6)
+
+  @@index([publishedAt, id], map: "outbox_unpublished")
+  @@map("outbox")
+}
+
+model ProcessedEvent {
+  handler     String
+  eventId     String   @map("event_id") @db.Uuid
+  processedAt DateTime @default(now()) @map("processed_at") @db.Timestamptz(6)
+
+  @@id([handler, eventId])
+  @@index([processedAt], map: "processed_events_processed_at")
+  @@map("processed_events")
+}
+
+/// Read-model каталога: чей SKU (SD-03, п. 5.1). До этапа 5 — seed, потом — события product.*
+model CatalogSku {
+  skuId    String @id @map("sku_id") @db.Uuid
+  sellerId String @map("seller_id") @db.Uuid
+
+  @@index([sellerId], map: "catalog_skus_seller")
+  @@map("catalog_skus")
+}
+
+/// Склад продавца с приоритетом (ТЗ, 3.4)
+model Warehouse {
+  warehouseId String   @id @map("warehouse_id") @db.Uuid
+  sellerId    String   @map("seller_id") @db.Uuid
+  name        String
+  /// меньше — раньше: резерв берётся с первого склада, где хватает товара
+  priority    Int
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  stock Stock[]
+
+  @@unique([sellerId, name], map: "warehouses_seller_name")
+  @@map("warehouses")
+}
+
+/// Остаток SKU на складе: available = on_hand - reserved
+model Stock {
+  warehouseId String   @map("warehouse_id") @db.Uuid
+  skuId       String   @map("sku_id") @db.Uuid
+  sellerId    String   @map("seller_id") @db.Uuid
+  onHand      Int      @map("on_hand")
+  reserved    Int      @default(0)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  warehouse Warehouse @relation(fields: [warehouseId], references: [warehouseId])
+
+  @@id([warehouseId, skuId])
+  @@index([sellerId, skuId], map: "stock_seller_sku")
+  @@index([skuId], map: "stock_sku")
+  @@map("stock")
+}
+
+/// Порог stock.low на SKU продавца (SD-03, п. 5.5)
+model StockThreshold {
+  skuId        String  @id @map("sku_id") @db.Uuid
+  sellerId     String  @map("seller_id") @db.Uuid
+  lowThreshold Int     @map("low_threshold")
+  lowNotified  Boolean @default(false) @map("low_notified")
+  /// aggregateVersion событий stock.low
+  version      Int     @default(0)
+
+  @@index([sellerId], map: "stock_thresholds_seller")
+  @@map("stock_thresholds")
+}
+
+/// Резерв заказа целиком: итог ReserveStock и версия событий резерва
+model ReservationOrder {
+  orderId     String   @id @map("order_id") @db.Uuid
+  /// RESERVED или REJECTED: повтор ReserveStock отвечает тем же
+  outcome     String
+  unavailable String[] @db.Uuid
+  version     Int      @default(0)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  lines Reservation[]
+
+  @@map("reservation_orders")
+}
+
+/// Позиция резерва: SKU заказа на одном складе
+model Reservation {
+  orderId     String    @map("order_id") @db.Uuid
+  skuId       String    @map("sku_id") @db.Uuid
+  subOrderId  String    @map("sub_order_id") @db.Uuid
+  sellerId    String    @map("seller_id") @db.Uuid
+  warehouseId String    @map("warehouse_id") @db.Uuid
+  qty         Int
+  /// RESERVED, COMMITTED, RELEASED, SHIPPED
+  status      String
+  /// только у RESERVED: потом резерв снимается сам
+  expiresAt   DateTime? @map("expires_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  order ReservationOrder @relation(fields: [orderId], references: [orderId])
+
+  @@id([orderId, skuId])
+  @@index([status, expiresAt], map: "reservations_due")
+  @@index([sellerId, status], map: "reservations_seller")
+  @@map("reservations")
+}
+
+/// Реестр продаж (ТЗ, 3.4): строка на подтверждённый под-заказ, сторно — отметкой
+model Sale {
+  subOrderId  String    @id @map("sub_order_id") @db.Uuid
+  orderId     String    @map("order_id") @db.Uuid
+  sellerId    String    @map("seller_id") @db.Uuid
+  amountMinor BigInt    @map("amount_minor")
+  lines       Json
+  confirmedAt DateTime  @map("confirmed_at") @db.Timestamptz(6)
+  reversedAt  DateTime? @map("reversed_at") @db.Timestamptz(6)
+
+  @@index([sellerId, confirmedAt], map: "sales_seller_confirmed")
+  @@map("sales")
+}
