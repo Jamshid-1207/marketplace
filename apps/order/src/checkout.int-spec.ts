@@ -120,12 +120,15 @@ describe('order: оформление (интеграция)', () => {
   const state = async (orderId: string) =>
     (await prisma.checkoutSaga.findUniqueOrThrow({ where: { orderId } })).state;
 
+  /** Что отправил order. Ответы erp тест публикует сам в тот же outbox — они не в счёт. */
   async function outboxOf(orderId: string): Promise<string[]> {
     const rows = await prisma.outbox.findMany({
       where: { messageKey: orderId },
       orderBy: { id: 'asc' },
     });
-    return rows.map((row) => (row.payload as { type: string }).type);
+    return rows
+      .map((row) => (row.payload as { type: string }).type)
+      .filter((type) => !type.startsWith('stock.'));
   }
 
   async function newOrder(token = buyerA): Promise<string> {
