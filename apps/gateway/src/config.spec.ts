@@ -9,6 +9,7 @@ describe('loadConfig', () => {
       ERP_URL: 'http://localhost:3103',
       AUTH_URL: 'http://localhost:3104',
       CATALOG_URL: 'http://localhost:3105',
+      CRM_URL: 'http://localhost:3106',
       UPSTREAM_TIMEOUT_MS: 10_000,
       JWKS_URL: 'http://localhost:3104/.well-known/jwks.json',
       RATE_LIMIT_PER_MINUTE: 100,

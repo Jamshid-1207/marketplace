@@ -7,7 +7,7 @@ cd "$(dirname "$0")/../.."
 [[ -f .env ]] || { echo 'нет .env: cp .env.example .env' >&2; exit 1; }
 
 compose() { docker compose -f compose.yaml -f compose.e2e.yaml --profile core "$@"; }
-SERVICES=(gateway auth catalog order payment erp fake-psp)
+SERVICES=(gateway auth catalog order payment erp crm notification fake-psp)
 
 finish() {
   local status=$?
@@ -55,6 +55,10 @@ until_rows auth_db "SELECT count(*) FROM memberships WHERE seller_status = 'acti
 until_rows order_db 'SELECT count(*) FROM catalog_skus' 5
 until_rows erp_db 'SELECT count(*) FROM catalog_skus' 5
 until_rows payment_db 'SELECT count(*) FROM categories' 4
+# тестовые пользователи (6) и магазины (2) — адресаты писем и профили crm (SD-06, решение 7)
+until_rows crm_db 'SELECT count(*) FROM customers WHERE email IS NOT NULL' 6
+until_rows notification_db 'SELECT count(*) FROM recipients' 6
+until_rows notification_db 'SELECT count(*) FROM shops' 2
 echo '::endgroup::'
 
 # вход тестовых пользователей — паролем из .env, которым их завёл seed auth

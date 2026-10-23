@@ -18,6 +18,7 @@ export class ProxyController {
   private readonly paymentApi: RequestHandler;
   private readonly auth: RequestHandler;
   private readonly catalog: RequestHandler;
+  private readonly crm: RequestHandler;
 
   constructor(@Inject(CONFIG) config: Config) {
     const timeoutMs = config.UPSTREAM_TIMEOUT_MS;
@@ -27,6 +28,7 @@ export class ProxyController {
     this.paymentApi = upstream({ target: config.PAYMENT_URL, timeoutMs, stripPrefix: '/api' });
     this.auth = upstream({ target: config.AUTH_URL, timeoutMs, stripPrefix: '/api' });
     this.catalog = upstream({ target: config.CATALOG_URL, timeoutMs, stripPrefix: '/api' });
+    this.crm = upstream({ target: config.CRM_URL, timeoutMs, stripPrefix: '/api' });
   }
 
   /**
@@ -70,6 +72,18 @@ export class ProxyController {
   ])
   products(@Req() req: Request, @Res() res: Response, @Next() next: NextFunction): void {
     void this.catalog(req, res, next);
+  }
+
+  /** Покупатели в CRM продавца и админки, отчёт по сегментам — в crm (SD-06, п. 5.3). */
+  @All([
+    'api/seller/customers',
+    'api/seller/customers/*path',
+    'api/admin/customers',
+    'api/admin/customers/*path',
+    'api/admin/reports/segments',
+  ])
+  customers(@Req() req: Request, @Res() res: Response, @Next() next: NextFunction): void {
+    void this.crm(req, res, next);
   }
 
   /** Заказы покупателя и под-заказы в кабинете продавца — в order (SD-03, п. 6.3). */

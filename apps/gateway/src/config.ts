@@ -12,6 +12,7 @@ export const ConfigSchema = z.object({
   ERP_URL: z.url().default('http://localhost:3103'),
   AUTH_URL: z.url().default('http://localhost:3104'),
   CATALOG_URL: z.url().default('http://localhost:3105'),
+  CRM_URL: z.url().default('http://localhost:3106'),
   /** Сколько ждать ответа сервиса: дольше — `504`. */
   UPSTREAM_TIMEOUT_MS: z.coerce.number().int().positive().default(10_000),
   /** Ключи проверки JWT — JWKS сервиса auth (SD-05, п. 5.2). */

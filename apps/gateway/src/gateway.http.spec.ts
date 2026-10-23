@@ -76,10 +76,11 @@ describe('gateway по HTTP', () => {
   let erp: Awaited<ReturnType<typeof echoService>>;
   let auth: Awaited<ReturnType<typeof echoService>>;
   let catalog: Awaited<ReturnType<typeof echoService>>;
+  let crm: Awaited<ReturnType<typeof echoService>>;
 
   beforeAll(async () => {
-    [order, payment, erp, auth, catalog] = await Promise.all(
-      Array.from({ length: 5 }, () => echoService()),
+    [order, payment, erp, auth, catalog, crm] = await Promise.all(
+      Array.from({ length: 6 }, () => echoService()),
     );
     app = await start({
       ORDER_URL: order.url,
@@ -87,6 +88,7 @@ describe('gateway по HTTP', () => {
       ERP_URL: erp.url,
       AUTH_URL: auth.url,
       CATALOG_URL: catalog.url,
+      CRM_URL: crm.url,
       RATE_LIMIT_PER_MINUTE: '5',
     });
   });
@@ -94,7 +96,7 @@ describe('gateway по HTTP', () => {
   afterAll(async () => {
     await app.close();
     await Promise.all(
-      [order, payment, erp, auth, catalog].map((s) => new Promise((r) => s.server.close(r))),
+      [order, payment, erp, auth, catalog, crm].map((s) => new Promise((r) => s.server.close(r))),
     );
   });
 
@@ -126,6 +128,16 @@ describe('gateway по HTTP', () => {
     // админка денег — по-прежнему payment
     await http().get('/api/admin/commission-rates').set('Authorization', token).expect(200);
     expect(payment.received.at(-1)?.url).toBe('/admin/commission-rates');
+  });
+
+  it('покупатели и отчёт по сегментам — в crm; отчёт по комиссии — по-прежнему payment', async () => {
+    const token = `Bearer ${await login('seller-b')}`;
+    for (const path of ['/seller/customers', '/admin/customers/c1', '/admin/reports/segments']) {
+      await http().get(`/api${path}`).set('Authorization', token).expect(200);
+      expect(crm.received.at(-1)?.url).toBe(path);
+    }
+    await http().get('/api/admin/reports/commission').set('Authorization', token).expect(200);
+    expect(payment.received.at(-1)?.url).toBe('/admin/reports/commission');
   });
 
   it('/api/orders без токена — 401, сервис не вызывается', async () => {

@@ -12,6 +12,8 @@
       "@repo/gateway",
       "@repo/auth-service",
       "@repo/catalog",
+      "@repo/crm",
+      "@repo/notification",
       "@repo/order",
       "@repo/payment",
       "@repo/erp",

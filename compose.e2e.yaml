@@ -21,6 +21,14 @@ services:
       # удержание денег продавца — секунды: e2e проверяет «в ожидании» → «доступно» (SD-04, п. 5)
       SELLER_HOLD_MS: '5000'
       MONEY_TICK_MS: '1000'
+  crm:
+    environment:
+      # «спящий» — через 30 с без заказов: e2e дожидается его, а не 90 дней (SD-06, п. 5.2)
+      SEGMENT_SLEEPING_MS: '30000'
+  notification:
+    environment:
+      # Mailpit остановлен в сценарии 8: повторы — секунды, а не минута
+      NOTIFY_RETRY_MAX_MS: '3000'
   gateway:
     environment:
       # все сценарии идут от нескольких тестовых пользователей подряд

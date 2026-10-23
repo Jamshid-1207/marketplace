@@ -301,6 +301,7 @@ services:
       ERP_URL: http://erp:3000
       AUTH_URL: http://auth:3000
       CATALOG_URL: http://catalog:3000
+      CRM_URL: http://crm:3000
       JWKS_URL: http://auth:3000/.well-known/jwks.json
     ports:
       - 3000:3000
@@ -591,6 +592,25 @@ services:
       resources:
         limits:
           memory: 256m
+  # replay проекций crm (SD-06, п. 5.4): crm остановлен, затем
+  #   docker compose --profile core run --rm crm-replay
+  crm-replay:
+    profiles:
+      - tools
+    build:
+      context: .
+      dockerfile: apps/crm/Dockerfile
+      target: runtime
+    restart: 'no'
+    command: ['node', 'dist/replay.js']
+    environment:
+      DATABASE_URL: postgresql://crm_svc:${CRM_DB_PASSWORD}@postgres:5432/crm_db
+      KAFKA_BROKERS: kafka:29092
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
 
 volumes:
   pgdata:
