@@ -1,6 +1,6 @@
 // Интеграционные тесты на Testcontainers: Postgres с миграциями сервиса и Kafka. Нужен Docker.
 module.exports = {
-  displayName: '@repo/<%= name %>:int',
+  displayName: '<%= packageName %>:int',
   preset: '../../jest.preset.js',
   testMatch: ['<rootDir>/src/**/*.int-spec.ts'],
   testPathIgnorePatterns: ['/node_modules/'],

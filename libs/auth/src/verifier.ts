@@ -8,10 +8,12 @@ import {
 import { Claims, TOKEN_ALGORITHM, TOKEN_AUDIENCE, TOKEN_ISSUER } from './claims';
 
 export type VerifierOptions =
-  /** До этапа 5 — gateway (SD-02, п. 3.1), потом — auth. */
+  /** JWKS сервиса auth (SD-05, п. 5.2). */
   | { jwksUrl: string }
-  /** Ключи уже в памяти: gateway проверяет токены своей заглушки входа без запроса к себе. */
-  | { jwks: JSONWebKeySet };
+  /** Ключи уже в памяти: тесты. */
+  | { jwks: JSONWebKeySet }
+  /** Ключи из своего хранилища: auth проверяет свои токены без запроса к себе. */
+  | { keys: () => JSONWebKeySet };
 
 export class InvalidTokenError extends Error {
   constructor(message: string, options?: { cause?: unknown }) {
@@ -29,6 +31,11 @@ export class JwtVerifier {
   private readonly keys: JWTVerifyGetKey;
 
   constructor(options: VerifierOptions) {
+    if ('keys' in options) {
+      const keys = options.keys;
+      this.keys = (header, token) => createLocalJWKSet(keys())(header, token);
+      return;
+    }
     this.keys =
       'jwks' in options
         ? createLocalJWKSet(options.jwks)

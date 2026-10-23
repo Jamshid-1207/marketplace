@@ -2,5 +2,6 @@ export * from './auth.module';
 export * from './claims';
 export * from './dev-issuer';
 export * from './guard';
+export * from './signer';
 export * from './verifier';
 export * from './seller';

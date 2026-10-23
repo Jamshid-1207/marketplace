@@ -45,6 +45,11 @@ export interface ConsumerRunnerOptions {
   retryDelaysMs?: readonly number[];
   /** Читать новую группу с начала топика. Сервисы — нет; тесты и replay — да. */
   fromBeginning?: boolean;
+  /**
+   * Топики, которые новая группа всегда читает с начала: события-состояния для read-моделей
+   * (`catalog.events`, SD-05, п. 7). Иначе группа, созданная позже публикации, их не увидит.
+   */
+  fromBeginningTopics?: readonly string[];
   sleep?: (ms: number) => Promise<void>;
 }
 
@@ -71,6 +76,7 @@ export class ConsumerRunner {
       partitionsConsumedConcurrently: 3,
       retryDelaysMs: DEFAULT_RETRY_DELAYS_MS,
       fromBeginning: false,
+      fromBeginningTopics: [],
       sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
       ...options,
     };
@@ -110,7 +116,8 @@ export class ConsumerRunner {
   }
 
   async start(): Promise<void> {
-    const { kafka, groupId, partitionsConsumedConcurrently, fromBeginning } = this.options;
+    const { kafka, groupId, partitionsConsumedConcurrently, fromBeginning, fromBeginningTopics } =
+      this.options;
     this.stopping = false;
     // сервис без обработчиков (например, только публикует) не подписывается ни на что
     if (this.handlers.size === 0) {
@@ -119,7 +126,13 @@ export class ConsumerRunner {
     }
     this.consumer = kafka.consumer({ groupId, allowAutoTopicCreation: false });
     await this.consumer.connect();
-    await this.consumer.subscribe({ topics: this.topics, fromBeginning });
+    const fromStart = this.topics.filter((t) => fromBeginningTopics.includes(t));
+    const rest = this.topics.filter((t) => !fromBeginningTopics.includes(t));
+    // начальная позиция новой группы задаётся на топик: отдельная подписка на каждую группу топиков
+    if (fromStart.length > 0) {
+      await this.consumer.subscribe({ topics: fromStart, fromBeginning: true });
+    }
+    if (rest.length > 0) await this.consumer.subscribe({ topics: rest, fromBeginning });
     // eachMessage: внутри партиции строго по одному, параллельной обработки нет (ADR-0002, п. 7)
     await this.consumer.run({
       partitionsConsumedConcurrently,

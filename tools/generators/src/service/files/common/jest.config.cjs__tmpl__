@@ -1,5 +1,5 @@
 module.exports = {
-  displayName: '@repo/<%= name %>',
+  displayName: '<%= packageName %>',
   preset: '../../jest.preset.js',
   coverageDirectory: 'test-output/jest/coverage',
 };

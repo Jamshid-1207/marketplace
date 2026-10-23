@@ -44,6 +44,9 @@
     },
     {
       "path": "./apps/erp"
+    },
+    {
+      "path": "./apps/auth"
     }
   ]
 }

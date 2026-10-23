@@ -1,7 +1,7 @@
 /**
- * Тестовые пользователи и seed-каталог на этапы 2–4, пока нет auth и catalog (ТЗ, раздел 8;
- * SD-02, п. 4). Их используют заглушка входа в gateway, seed order и e2e.
- * Удаляется на этапе 5 вместе с заглушкой.
+ * Демо-данные стенда и e2e (решение 6 SD-05): пользователей заводит seed auth, магазины,
+ * категории и товары — seed catalog обычными событиями, склады и остатки — seed erp.
+ * Id постоянные: сценарии e2e ссылаются на них.
  */
 
 // UUID v7 с читаемым хвостом: a… — магазин A, b… — магазин B, c… — категории; …2xx — склады
@@ -21,6 +21,8 @@ export const DEV_CATEGORIES = {
 
 export interface DevUser {
   login: string;
+  /** Вход — по email; пароль у всех тестовых пользователей общий, `DEV_USER_PASSWORD`. */
+  email: string;
   userId: string;
   roles: ('buyer' | 'seller' | 'seller_manager' | 'admin')[];
   sellerId?: string;
@@ -38,10 +40,23 @@ const OWNER_SCOPES: DevUser['scopes'] = [
 
 /** Покупать может любой пользователь, поэтому роль `buyer` есть у всех (ТЗ, раздел 2). */
 export const DEV_USERS: readonly DevUser[] = [
-  { login: 'buyer-1', userId: id('0b01'), roles: ['buyer'], scopes: [] },
-  { login: 'buyer-2', userId: id('0b02'), roles: ['buyer'], scopes: [] },
+  {
+    login: 'buyer-1',
+    email: 'buyer-1@marketplace.test',
+    userId: id('0b01'),
+    roles: ['buyer'],
+    scopes: [],
+  },
+  {
+    login: 'buyer-2',
+    email: 'buyer-2@marketplace.test',
+    userId: id('0b02'),
+    roles: ['buyer'],
+    scopes: [],
+  },
   {
     login: 'seller-a',
+    email: 'seller-a@marketplace.test',
     userId: id('a001'),
     roles: ['buyer', 'seller'],
     sellerId: DEV_SELLERS.A,
@@ -49,6 +64,7 @@ export const DEV_USERS: readonly DevUser[] = [
   },
   {
     login: 'seller-b',
+    email: 'seller-b@marketplace.test',
     userId: id('b001'),
     roles: ['buyer', 'seller'],
     sellerId: DEV_SELLERS.B,
@@ -57,12 +73,19 @@ export const DEV_USERS: readonly DevUser[] = [
   // сотрудник магазина A только с правом заказов: проверки 403 в кабинете (ADR-0006, п. 8)
   {
     login: 'manager-a',
+    email: 'manager-a@marketplace.test',
     userId: id('a002'),
     roles: ['buyer', 'seller_manager'],
     sellerId: DEV_SELLERS.A,
     scopes: ['orders'],
   },
-  { login: 'admin', userId: id('ad01'), roles: ['buyer', 'admin'], scopes: [] },
+  {
+    login: 'admin',
+    email: 'admin@marketplace.test',
+    userId: id('ad01'),
+    roles: ['buyer', 'admin'],
+    scopes: [],
+  },
 ];
 
 export interface DevSku {

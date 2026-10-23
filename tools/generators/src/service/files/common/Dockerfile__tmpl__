@@ -17,9 +17,9 @@ COPY . .
 RUN pnpm install --offline --frozen-lockfile
 
 FROM deps AS build
-RUN pnpm nx run @repo/<%= name %>:build --output-style=static
+RUN pnpm nx run <%= packageName %>:build --output-style=static
 # только production-зависимости сервиса и нужные ему workspace-пакеты
-RUN pnpm --filter @repo/<%= name %> deploy --legacy --prod /out
+RUN pnpm --filter <%= packageName %> deploy --legacy --prod /out
 <% if (!bare) { %>
 # одноразовый шаг миграций (ADR-0004, п. 6): Prisma CLI и prisma/
 FROM deps AS migrate

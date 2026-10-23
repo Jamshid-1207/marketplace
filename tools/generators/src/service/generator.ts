@@ -59,6 +59,7 @@ export default async function serviceGenerator(
 
   const substitutions = {
     name,
+    packageName: packageName(tree, name),
     bare,
     servePort: options.port ?? DEFAULT_SERVE_PORT,
     nodeImage: NODE_IMAGE,
@@ -96,6 +97,11 @@ export default async function serviceGenerator(
 
   await formatFiles(tree);
   return () => installPackagesTask(tree);
+}
+
+/** Имя пакета сервиса; если его уже носит lib (`libs/auth`), к имени добавляется `-service`. */
+export function packageName(tree: Tree, name: string): string {
+  return tree.exists(`libs/${name}/package.json`) ? `@repo/${name}-service` : `@repo/${name}`;
 }
 
 /** Первая миграция — каноническая DDL из libs, без изменений (SD-01, п. 6). */

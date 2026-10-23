@@ -400,3 +400,31 @@ describe('ConsumerRunner.reprocessMessage', () => {
     expect(dlq.header(0, 'x-error')).toContain('не известен');
   });
 });
+
+describe('ConsumerRunner: начальная позиция новой группы', () => {
+  it('топики из fromBeginningTopics — с начала, остальные — по fromBeginning', async () => {
+    const subscriptions: { topics: string[]; fromBeginning: boolean }[] = [];
+    const consumer = {
+      connect: jest.fn(),
+      subscribe: jest.fn(async (s: { topics: string[]; fromBeginning: boolean }) => {
+        subscriptions.push(s);
+      }),
+      run: jest.fn(),
+    };
+    const runner = new ConsumerRunner({
+      kafka: { consumer: () => consumer } as unknown as Kafka,
+      groupId: 'demo-service',
+      registry: new MessageRegistry([SmokePingedV1, OtherV1]),
+      dlq: new FakeDlq(),
+      logger,
+      fromBeginningTopics: ['other.events'],
+    });
+    runner.on(SmokePingedV1, 'demo.ping', async () => undefined);
+    runner.on(OtherV1, 'demo.other', async () => undefined);
+    await runner.start();
+    expect(subscriptions).toEqual([
+      { topics: ['other.events'], fromBeginning: true },
+      { topics: ['smoke.events'], fromBeginning: false },
+    ]);
+  });
+});

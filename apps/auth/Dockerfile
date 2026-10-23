@@ -1,0 +1,36 @@
+# Образ сервиса auth (SD-01, п. 7). Собирается из корня монорепо:
+#   docker build -f apps/auth/Dockerfile --target runtime .
+ARG NODE_IMAGE=node:24.11.1-alpine
+
+FROM ${NODE_IMAGE} AS base
+# openssl нужен движку миграций Prisma на Alpine
+RUN apk add --no-cache openssl && npm install -g pnpm@12.14.0 && npm cache clean --force
+WORKDIR /repo
+ENV NX_DAEMON=false NX_NO_CLOUD=true CI=true
+
+# зависимости ставятся по lockfile до копирования исходников: слой переиспользуется
+FROM base AS deps
+COPY pnpm-lock.yaml pnpm-workspace.yaml ./
+RUN pnpm fetch
+COPY . .
+RUN pnpm install --offline --frozen-lockfile
+
+FROM deps AS build
+RUN pnpm nx run @repo/auth-service:build --output-style=static
+# только production-зависимости сервиса и нужные ему workspace-пакеты
+RUN pnpm --filter @repo/auth-service deploy --legacy --prod /out
+
+# одноразовый шаг миграций (ADR-0004, п. 6): Prisma CLI и prisma/, затем тестовые пользователи
+# при DEV_USER_PASSWORD (решение 6 SD-05). Seed собран вместе с сервисом — шаг от build
+FROM build AS migrate
+WORKDIR /repo/apps/auth
+CMD ["sh", "-c", "pnpm exec prisma migrate deploy && node dist/seed.js"]
+
+FROM ${NODE_IMAGE} AS runtime
+ENV NODE_ENV=production
+WORKDIR /app
+COPY --from=build --chown=node:node /out .
+USER node
+EXPOSE 3000
+# instrumentation грузится до main.js: OpenTelemetry должен подменить модули до их импорта
+CMD ["node", "--require", "./dist/instrumentation.js", "dist/main.js"]

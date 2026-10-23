@@ -108,6 +108,18 @@ describe('JwtVerifier', () => {
     await expect(local.verify(await other.issue(buyer))).rejects.toBeInstanceOf(InvalidTokenError);
   });
 
+  it('ключи из хранилища: новый ключ виден без пересоздания проверки', async () => {
+    const other = await DevTokenIssuer.create();
+    let current = issuer.jwks();
+    const fromStore = new JwtVerifier({ keys: () => current });
+    expect(await fromStore.verify(await issuer.issue(buyer))).toEqual(buyer);
+    await expect(fromStore.verify(await other.issue(buyer))).rejects.toBeInstanceOf(
+      InvalidTokenError,
+    );
+    current = other.jwks();
+    expect(await fromStore.verify(await other.issue(buyer))).toEqual(buyer);
+  });
+
   it('выпуск отклоняет claims, не соответствующие схеме', async () => {
     await expect(issuer.issue({ ...buyer, sub: 'not-a-uuid' })).rejects.toThrow();
   });

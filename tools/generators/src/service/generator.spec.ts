@@ -86,6 +86,13 @@ describe('генератор сервиса', () => {
     expect(read(tree, 'apps/demo/Dockerfile')).not.toContain('<%');
   });
 
+  it('имя пакета не совпадает с именем lib', async () => {
+    tree.write('libs/auth/package.json', JSON.stringify({ name: '@repo/auth' }));
+    await serviceGenerator(tree, { name: 'auth' });
+    expect(readJson(tree, 'apps/auth/package.json').name).toBe('@repo/auth-service');
+    expect(read(tree, 'apps/auth/Dockerfile')).toContain('--filter @repo/auth-service deploy');
+  });
+
   it('tsconfig сервиса ссылается на libs, от которых он зависит', async () => {
     await serviceGenerator(tree, { name: 'demo' });
     const pkg = readJson(tree, 'apps/demo/package.json');

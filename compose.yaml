@@ -377,6 +377,57 @@ services:
       resources:
         limits:
           memory: 256m
+  auth-migrate:
+    profiles:
+      - core
+      - full
+    build:
+      context: .
+      dockerfile: apps/auth/Dockerfile
+      target: migrate
+    environment:
+      DATABASE_URL: postgresql://auth_svc:${AUTH_DB_PASSWORD}@postgres:5432/auth_db
+    depends_on:
+      db-provision:
+        condition: service_completed_successfully
+  auth:
+    profiles:
+      - core
+      - full
+    build:
+      context: .
+      dockerfile: apps/auth/Dockerfile
+      target: runtime
+    restart: unless-stopped
+    environment:
+      PORT: '3000'
+      DATABASE_URL: postgresql://auth_svc:${AUTH_DB_PASSWORD}@postgres:5432/auth_db
+      DB_POOL_MAX: '5'
+      KAFKA_BROKERS: kafka:29092
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+    healthcheck:
+      test:
+        - CMD
+        - wget
+        - -qO-
+        - http://localhost:3000/health/ready
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
+    depends_on:
+      auth-migrate:
+        condition: service_completed_successfully
+      kafka-init:
+        condition: service_completed_successfully
+      kafka:
+        condition: service_healthy
+      jaeger:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 256m
 
 volumes:
   pgdata:

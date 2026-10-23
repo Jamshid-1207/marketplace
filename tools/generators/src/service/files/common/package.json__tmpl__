@@ -1,5 +1,5 @@
 {
-  "name": "@repo/<%= name %>",
+  "name": "<%= packageName %>",
   "version": "0.0.1",
   "private": true,
   "type": "commonjs",
