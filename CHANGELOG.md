@@ -3,6 +3,10 @@
 Все изменения проекта. Формат: [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/), версии по этапам.
 Типы: **Added**, **Changed**, **Fixed**, **Removed**, **Decided** (архитектурные решения).
 
+## [Unreleased] · Этап 3: склад
+### Added
+- `docs/system-design/03-warehouse.md`: дизайн этапа 3 на согласовании — erp (склады, остатки, резервы с TTL, реестр продаж, `stock.low`, кабинет), полная saga с `RESERVING` и `COMMITTING`, отгрузка, доставка и отмена под-заказа с возвратом, `@SellerScope` и тест изоляции, 15 сценариев готовности.
+
 ## [0.3.0] - 2026-10-23 · Этап 2: оформление без склада ✅
 Критерии SD-02 выполнены: сценарии 1–3 и 5–12 проходят в новом CI job `e2e` на compose-стенде, сценарий 4 — в интеграционных тестах payment. Все пять job'ов CI зелёные: `check`, `integration`, `infra-smoke`, `generator-smoke`, `e2e`.
 
