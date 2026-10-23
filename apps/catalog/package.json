@@ -95,9 +95,10 @@
           "command": "node --require ./dist/instrumentation.js dist/main.js",
           "cwd": "{projectRoot}",
           "env": {
-            "PORT": "3100",
+            "PORT": "3105",
             "DATABASE_URL": "postgresql://catalog_svc:catalog_local@localhost:5432/catalog_db",
             "KAFKA_BROKERS": "localhost:9092",
+            "JWKS_URL": "http://localhost:3104/.well-known/jwks.json",
             "LOG_PRETTY": "true"
           }
         }

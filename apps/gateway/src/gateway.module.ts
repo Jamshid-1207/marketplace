@@ -1,15 +1,7 @@
-import {
-  Module,
-  type DynamicModule,
-  type MiddlewareConsumer,
-  type NestModule,
-} from '@nestjs/common';
+import { Module, type DynamicModule } from '@nestjs/common';
 import { ThrottlerModule } from '@nestjs/throttler';
-import { AuthModule, DevTokenIssuer, type Claims } from '@repo/auth';
-import { json } from 'express';
+import { AuthModule, type Claims } from '@repo/auth';
 import type { Config } from './config';
-import { DevLoginController } from './dev-auth/dev-login.controller';
-import { JwksController } from './dev-auth/jwks.controller';
 import { ProxyController } from './proxy/proxy.controller';
 
 /** Ключ лимита: пользователь из проверенного токена, аноним — IP (SD-02, п. 3.1). */
@@ -18,35 +10,23 @@ export function rateLimitKey(req: { claims?: Claims; ip?: string }): string {
 }
 
 /**
- * Маршруты, JWT, лимит и заглушка входа. Тело запроса gateway не разбирает (`bodyParser: false`):
- * прокси передаёт его потоком. Исключение — `POST /dev/login`, его тело читает сам gateway.
+ * Маршруты, JWT и лимит. Тело запроса gateway не разбирает (`bodyParser: false`): прокси
+ * передаёт его потоком. Ключи JWT — из JWKS сервиса auth (SD-05, п. 5.2).
  */
 @Module({})
-export class GatewayModule implements NestModule {
-  static forRoot(config: Config, issuer: DevTokenIssuer): DynamicModule {
+export class GatewayModule {
+  static forRoot(config: Config): DynamicModule {
     return {
       module: GatewayModule,
       imports: [
-        // до этапа 5 токены выпускает сам gateway: ключи берутся из памяти, без запроса к себе
-        AuthModule.forRoot(
-          config.JWKS_URL ? { jwksUrl: config.JWKS_URL } : { jwks: issuer.jwks() },
-        ),
+        AuthModule.forRoot({ jwksUrl: config.JWKS_URL }),
         // в памяти: пока gateway один, Redis не нужен (SD-00, п. 2)
         ThrottlerModule.forRoot({
           throttlers: [{ ttl: 60_000, limit: config.RATE_LIMIT_PER_MINUTE }],
           getTracker: (req) => rateLimitKey(req),
         }),
       ],
-      controllers: [
-        ProxyController,
-        JwksController,
-        ...(config.DEV_AUTH ? [DevLoginController] : []),
-      ],
-      providers: [{ provide: DevTokenIssuer, useValue: issuer }],
+      controllers: [ProxyController],
     };
-  }
-
-  configure(consumer: MiddlewareConsumer): void {
-    consumer.apply(json({ limit: '10kb' })).forRoutes('dev/login');
   }
 }

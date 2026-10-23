@@ -1,9 +1,16 @@
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { DevTokenIssuer, sellerEndpoints } from '@repo/auth';
-import { money, newId } from '@repo/contracts';
+import {
+  CategoryCreatedV1,
+  CategoryUpdatedV1,
+  DEV_CATEGORY_TREE,
+  money,
+  newId,
+} from '@repo/contracts';
 import { runInNewChain } from '@repo/observability';
-import { createTopics, testBrokers, testDatabaseUrl } from '@repo/testing';
+import { outbox } from '@repo/outbox';
+import { createTopics, eventually, testBrokers, testDatabaseUrl } from '@repo/testing';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import request from 'supertest';
@@ -15,7 +22,8 @@ import { InsufficientFundsError, PayoutService } from './application/payout.serv
 import { loadConfig } from './config';
 import { ACCOUNTS } from './domain/ledger';
 import { PrismaService } from './infrastructure/prisma.service';
-import { seedCategories } from './infrastructure/seed-categories';
+import { CategoryReadModel } from './infrastructure/category-read-model';
+import { seedRates } from './infrastructure/seed-rates';
 import { FINANCE_READER } from './interface/finance.controller';
 import { PspDouble } from './testing/psp-double';
 
@@ -43,6 +51,7 @@ describe('payment: деньги (интеграция)', () => {
       { topic: 'payment.commands' },
       { topic: 'payment.events' },
       { topic: 'order.events' },
+      { topic: 'catalog.events' },
       { topic: 'payment-service.dlq' },
     );
     const config = loadConfig({
@@ -66,8 +75,16 @@ describe('payment: деньги (интеграция)', () => {
     hold = app.get(HoldService);
     payouts = app.get(PayoutService);
     finance = app.get(FINANCE_READER);
-    await seedCategories(prisma);
-    await seedCategories(prisma);
+    // категории демо-каталога, как их опубликует catalog (SD-05, п. 7), и ставка «Телефоны»
+    const categories = app.get(CategoryReadModel);
+    const paths = new Map<string, string[]>();
+    for (const c of DEV_CATEGORY_TREE) {
+      const path = [...(c.parentId ? (paths.get(c.parentId) ?? []) : []), c.categoryId];
+      paths.set(c.categoryId, path);
+      await categories.apply(1, { ...c, path });
+    }
+    await seedRates(prisma);
+    expect(await seedRates(prisma)).toBe(0); // повтор не сбрасывает ставку
   });
 
   afterAll(async () => {
@@ -291,6 +308,43 @@ describe('payment: деньги (интеграция)', () => {
           .send({});
         expect({ endpoint, status: res.status }).toEqual({ endpoint, status: 403 });
       }
+    });
+
+    it('category.* из Kafka: новой категории можно задать ставку; старое событие не в счёт', async () => {
+      const admin = await token({ sub: newId(), roles: ['admin'], scopes: [] });
+      const categoryId = newId();
+      const category = (name: string) => ({ categoryId, parentId: null, name, path: [categoryId] });
+      // как catalog: через outbox в catalog.events
+      const emit = (
+        definition: typeof CategoryCreatedV1 | typeof CategoryUpdatedV1,
+        name: string,
+        version: number,
+      ) =>
+        runInNewChain(() =>
+          prisma.$transaction((tx) =>
+            outbox.add(tx, definition, category(name), {
+              aggregateId: categoryId,
+              aggregateVersion: version,
+            }),
+          ),
+        );
+      const setRate = () =>
+        http()
+          .put(`/admin/commission-rates/${categoryId}`)
+          .set('Authorization', admin)
+          .send({ rateBp: 700 });
+      expect((await setRate()).status).toBe(404);
+      await emit(CategoryCreatedV1, 'Сад', 1);
+      await emit(CategoryUpdatedV1, 'Сад и огород', 2);
+      await emit(CategoryCreatedV1, 'Сад', 1); // повтор старого
+      await eventually(
+        async () => (await prisma.category.findUnique({ where: { categoryId } }))?.version === 2,
+        { what: 'категория в read-модели payment' },
+      );
+      expect((await prisma.category.findUniqueOrThrow({ where: { categoryId } })).name).toBe(
+        'Сад и огород',
+      );
+      expect((await setRate()).status).toBe(200);
     });
   });
 });

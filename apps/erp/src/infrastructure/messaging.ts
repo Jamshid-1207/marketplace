@@ -67,6 +67,8 @@ export const messagingProviders: Provider[] = [
         dlq: publisher,
         logger: logger(log, 'consumer'),
         fromBeginning: config.KAFKA_FROM_BEGINNING,
+        // SKU продавцов: группа, созданная позже catalog, читает его события с начала
+        fromBeginningTopics: ['catalog.events'],
       }),
   },
 ];

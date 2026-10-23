@@ -99,7 +99,7 @@
             "DATABASE_URL": "postgresql://payment_svc:payment_local@localhost:5432/payment_db",
             "KAFKA_BROKERS": "localhost:9092",
             "PSP_API_URL": "http://localhost:4000",
-            "JWKS_URL": "http://localhost:3000/.well-known/jwks.json",
+            "JWKS_URL": "http://localhost:3104/.well-known/jwks.json",
             "PSP_WEBHOOK_SECRET": "fake-psp-local-webhook-secret",
             "LOG_PRETTY": "true"
           }

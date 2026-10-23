@@ -95,7 +95,7 @@
           "command": "node --require ./dist/instrumentation.js dist/main.js",
           "cwd": "{projectRoot}",
           "env": {
-            "PORT": "3100",
+            "PORT": "3104",
             "DATABASE_URL": "postgresql://auth_svc:auth_local@localhost:5432/auth_db",
             "KAFKA_BROKERS": "localhost:9092",
             "LOG_PRETTY": "true"

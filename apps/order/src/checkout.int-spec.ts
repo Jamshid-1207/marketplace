@@ -7,6 +7,9 @@ import {
   PaymentAuthorizedV1,
   PaymentCapturedV1,
   PaymentCreatedV1,
+  money,
+  ProductPublishedV1,
+  ProductUnpublishedV1,
   StockCommittedV1,
   StockReservedV1,
   type AnyMessageDefinition,
@@ -23,7 +26,7 @@ import { CheckoutService } from './application/checkout.service';
 import { SubOrderService } from './application/sub-order.service';
 import { loadConfig } from './config';
 import { PrismaService } from './infrastructure/prisma.service';
-import { seedCatalog } from './infrastructure/seed-catalog';
+import { CatalogReadModel } from './infrastructure/catalog-read-model';
 
 const [phone, , kettle] = DEV_CATALOG;
 const body = {
@@ -69,6 +72,7 @@ describe('order: оформление (интеграция)', () => {
       { topic: 'payment.events' },
       { topic: 'payment.commands' },
       { topic: 'order.events' },
+      { topic: 'catalog.events' },
       { topic: 'order-service.dlq' },
     );
     const config = loadConfig({
@@ -85,8 +89,24 @@ describe('order: оформление (интеграция)', () => {
     app = moduleRef.createNestApplication();
     await app.init();
     prisma = app.get(PrismaService);
-    await seedCatalog(prisma);
-    await seedCatalog(prisma); // повторный запуск ничего не ломает
+    // демо-каталог, как его опубликует catalog (SD-05, п. 7)
+    const catalog = app.get(CatalogReadModel);
+    for (const item of DEV_CATALOG) {
+      await catalog.published(1, {
+        productId: item.productId,
+        sellerId: item.sellerId,
+        title: item.title,
+        categoryPath: item.categoryPath,
+        skus: [
+          {
+            skuId: item.skuId,
+            skuCode: item.skuCode,
+            price: money(item.priceMinor),
+            active: item.active,
+          },
+        ],
+      });
+    }
   });
 
   afterAll(async () => {
@@ -161,6 +181,55 @@ describe('order: оформление (интеграция)', () => {
     expect(res.status).toBe(422);
     expect(res.body.unavailable).toEqual([inactive]);
     expect((await http().get('/health/ready')).status).toBe(200);
+  });
+
+  it('read-model по product.* из Kafka: опубликован — заказывается, снят — 422, старое событие не в счёт', async () => {
+    const productId = newId();
+    const skuId = newId();
+    const sellerId = kettle.sellerId;
+    const event = (active: boolean, priceMinor: number) => ({
+      productId,
+      sellerId,
+      title: 'Термос',
+      categoryPath: kettle.categoryPath,
+      skus: [{ skuId, skuCode: `T-${skuId.slice(-6)}`, price: money(priceMinor), active }],
+    });
+    // как catalog: через outbox в catalog.events, версия — номер события товара
+    const emit = <D extends AnyMessageDefinition>(
+      definition: D,
+      payload: PayloadOf<D>,
+      version: number,
+    ) =>
+      runInNewChain(() =>
+        prisma.$transaction((tx) =>
+          outbox.add(tx, definition, payload, {
+            aggregateId: productId,
+            aggregateVersion: version,
+          }),
+        ),
+      );
+    const sku = () => prisma.catalogSku.findUnique({ where: { skuId } });
+    const lines = { ...body, lines: [{ skuId, qty: 1 }] };
+
+    await emit(ProductPublishedV1, event(true, 120_00), 1);
+    await eventually(async () => (await sku())?.active === true, { what: 'SKU в read-модели' });
+    expect((await post(buyerA, newId(), lines)).status).toBe(202);
+
+    await emit(ProductPublishedV1, event(true, 150_00), 2);
+    await eventually(async () => (await sku())?.priceMinor === 150_00n, { what: 'новая цена' });
+
+    await emit(ProductUnpublishedV1, { productId, sellerId, reason: 'seller_blocked' }, 3);
+    await eventually(async () => (await sku())?.active === false, { what: 'товар снят' });
+    expect((await post(buyerA, newId(), lines)).status).toBe(422);
+
+    // опоздавшее событие версии 2 не вернёт товар на витрину
+    await emit(ProductPublishedV1, event(true, 150_00), 2);
+    await emit(ProductUnpublishedV1, { productId, sellerId, reason: 'archived' }, 4);
+    await eventually(
+      async () => (await prisma.catalogProduct.findUnique({ where: { productId } }))?.version === 4,
+      { what: 'последнее событие обработано' },
+    );
+    expect((await sku())?.active).toBe(false);
   });
 
   it('конкурентные запросы с одним Idempotency-Key — один заказ; другое тело — 422', async () => {

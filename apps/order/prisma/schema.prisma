@@ -35,16 +35,27 @@ model ProcessedEvent {
   @@map("processed_events")
 }
 
-/// Read-model каталога (ADR-0004, п. 3): на этапе 2 — seed, на этапе 5 — события product.*
+/// Read-model каталога (ADR-0004, п. 3) по событиям product.* (SD-05, п. 7)
 model CatalogSku {
   skuId        String   @id @map("sku_id") @db.Uuid
+  productId    String   @map("product_id") @db.Uuid
   sellerId     String   @map("seller_id") @db.Uuid
   title        String
   priceMinor   BigInt   @map("price_minor")
   categoryPath String[] @map("category_path") @db.Uuid
   active       Boolean
 
+  @@index([productId], map: "catalog_skus_product")
   @@map("catalog_skus")
+}
+
+/// Версия товара в read-модели: события старше неё — повторы или опоздавшие (SD-05, п. 7)
+model CatalogProduct {
+  productId String @id @map("product_id") @db.Uuid
+  sellerId  String @map("seller_id") @db.Uuid
+  version   Int
+
+  @@map("catalog_products")
 }
 
 /// Заказ (SD-02, п. 5.1). Статуса здесь нет: он в checkout_sagas и sub_orders (ADR-0005, п. 7).

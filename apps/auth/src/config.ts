@@ -3,6 +3,10 @@ import { z } from 'zod';
 
 export const SERVICE_NAME = 'auth';
 
+/** Пустая переменная compose (`${ADMIN_EMAIL:-}`) — как не заданная. */
+const optional = <T extends z.ZodType>(schema: T) =>
+  z.preprocess((value) => (value === '' ? undefined : value), schema.optional());
+
 /** Конфигурация — только из env (ADR-0004, п. 7). Ошибка при старте лучше, чем в первом запросе. */
 export const ConfigSchema = z
   .object({
@@ -25,8 +29,8 @@ export const ConfigSchema = z
     /** Время жизни refresh-токена (ТЗ, 3.1). */
     REFRESH_TOKEN_TTL_DAYS: z.coerce.number().positive().default(7),
     /** Первый админ (решение 5 SD-05): создаётся или получает роль при старте. */
-    ADMIN_EMAIL: z.email().optional(),
-    ADMIN_PASSWORD: z.string().min(12).optional(),
+    ADMIN_EMAIL: optional(z.email()),
+    ADMIN_PASSWORD: optional(z.string().min(12)),
     LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
     LOG_PRETTY: z.stringbool().default(false),
   })

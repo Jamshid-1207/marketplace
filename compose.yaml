@@ -177,8 +177,8 @@ services:
       target: migrate
     environment:
       DATABASE_URL: postgresql://payment_svc:${PAYMENT_DB_PASSWORD}@postgres:5432/payment_db
-      # категории seed-каталога до этапа 5 (SD-04, решение 3)
-      SEED_CATEGORIES: 'true'
+      # ставка «Телефоны» демо-каталога; категории приходят событиями catalog (SD-05, п. 7)
+      SEED_RATES: 'true'
     depends_on:
       db-provision:
         condition: service_completed_successfully
@@ -199,7 +199,7 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
       # провайдер внутри сети compose; webhook от него идёт через gateway (SD-02, п. 3)
       PSP_API_URL: http://fake-psp:3000
-      JWKS_URL: http://gateway:3000/.well-known/jwks.json
+      JWKS_URL: http://auth:3000/.well-known/jwks.json
       SELLER_HOLD_MS: ${SELLER_HOLD_MS:-604800000}
       MIN_PAYOUT_MINOR: ${MIN_PAYOUT_MINOR:-10000000}
       PSP_WEBHOOK_SECRET: ${PSP_WEBHOOK_SECRET:?задайте в .env}
@@ -236,8 +236,6 @@ services:
       target: migrate
     environment:
       DATABASE_URL: postgresql://order_svc:${ORDER_DB_PASSWORD}@postgres:5432/order_db
-      # тестовый каталог двух продавцов до этапа 5 (SD-02, п. 5.1)
-      SEED_CATALOG: 'true'
     depends_on:
       db-provision:
         condition: service_completed_successfully
@@ -257,7 +255,7 @@ services:
       KAFKA_BROKERS: kafka:29092
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
       # ключи JWT до этапа 5 — у gateway (SD-02, п. 3.1)
-      JWKS_URL: http://gateway:3000/.well-known/jwks.json
+      JWKS_URL: http://auth:3000/.well-known/jwks.json
       RESERVE_DEADLINE_MS: ${RESERVE_DEADLINE_MS:-30000}
       PAYMENT_DEADLINE_MS: ${PAYMENT_DEADLINE_MS:-900000}
       COMMIT_DEADLINE_MS: ${COMMIT_DEADLINE_MS:-300000}
@@ -301,8 +299,9 @@ services:
       ORDER_URL: http://order:3000
       PAYMENT_URL: http://payment:3000
       ERP_URL: http://erp:3000
-      # заглушка входа до этапа 5: сервиса auth ещё нет (SD-02, п. 3.1)
-      DEV_AUTH: ${DEV_AUTH:-true}
+      AUTH_URL: http://auth:3000
+      CATALOG_URL: http://catalog:3000
+      JWKS_URL: http://auth:3000/.well-known/jwks.json
     ports:
       - 3000:3000
     healthcheck:
@@ -352,7 +351,7 @@ services:
       DB_POOL_MAX: '5'
       KAFKA_BROKERS: kafka:29092
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
-      JWKS_URL: http://gateway:3000/.well-known/jwks.json
+      JWKS_URL: http://auth:3000/.well-known/jwks.json
       RESERVE_TTL_MS: ${RESERVE_TTL_MS:-1800000}
     healthcheck:
       test:
@@ -387,6 +386,8 @@ services:
       target: migrate
     environment:
       DATABASE_URL: postgresql://auth_svc:${AUTH_DB_PASSWORD}@postgres:5432/auth_db
+      # тестовые пользователи с общим паролем (решение 6 SD-05); пусто — без них
+      DEV_USER_PASSWORD: ${DEV_USER_PASSWORD:-}
     depends_on:
       db-provision:
         condition: service_completed_successfully
@@ -404,6 +405,9 @@ services:
       DATABASE_URL: postgresql://auth_svc:${AUTH_DB_PASSWORD}@postgres:5432/auth_db
       DB_POOL_MAX: '5'
       KAFKA_BROKERS: kafka:29092
+      # первый админ платформы (решение 5 SD-05); пусто — не создаётся
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
     healthcheck:
       test:
@@ -438,6 +442,8 @@ services:
       target: migrate
     environment:
       DATABASE_URL: postgresql://catalog_svc:${CATALOG_DB_PASSWORD}@postgres:5432/catalog_db
+      # демо-каталог: категории, магазины A и B, товары (решение 6 SD-05)
+      SEED_CATALOG: 'true'
     depends_on:
       db-provision:
         condition: service_completed_successfully
@@ -455,6 +461,7 @@ services:
       DATABASE_URL: postgresql://catalog_svc:${CATALOG_DB_PASSWORD}@postgres:5432/catalog_db
       DB_POOL_MAX: '5'
       KAFKA_BROKERS: kafka:29092
+      JWKS_URL: http://auth:3000/.well-known/jwks.json
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
     healthcheck:
       test:

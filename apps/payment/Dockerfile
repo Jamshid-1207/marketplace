@@ -20,8 +20,8 @@ RUN pnpm nx run @repo/payment:build --output-style=static
 # только production-зависимости сервиса и нужные ему workspace-пакеты
 RUN pnpm --filter @repo/payment deploy --legacy --prod /out
 
-# одноразовый шаг миграций (ADR-0004, п. 6): Prisma CLI и prisma/, затем seed категорий
-# при SEED_CATEGORIES=true (SD-04, п. 4). Seed собран вместе с сервисом — шаг от build
+# одноразовый шаг миграций (ADR-0004, п. 6): Prisma CLI и prisma/, затем ставка демо-каталога
+# при SEED_RATES=true (SD-04, п. 4; SD-05, п. 7). Seed собран вместе с сервисом — шаг от build
 FROM build AS migrate
 WORKDIR /repo/apps/payment
 CMD ["sh", "-c", "pnpm exec prisma migrate deploy && node dist/seed.js"]

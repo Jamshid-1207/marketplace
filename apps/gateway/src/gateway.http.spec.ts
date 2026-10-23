@@ -1,6 +1,7 @@
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { DevTokenIssuer } from '@repo/auth';
+import { devUser, newId } from '@repo/contracts';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import request from 'supertest';
@@ -30,10 +31,38 @@ async function echoService() {
   return { server, received, url: `http://localhost:${(server.address() as AddressInfo).port}` };
 }
 
+/** Ключи и токены, как их выпускает auth (SD-05, п. 5.2): JWKS — на отдельном сервере. */
+let issuer: DevTokenIssuer;
+let jwks: Server;
+let jwksUrl: string;
+
+beforeAll(async () => {
+  issuer = await DevTokenIssuer.create();
+  jwks = createServer((_, res) => {
+    res.setHeader('content-type', 'application/json');
+    res.end(JSON.stringify(issuer.jwks()));
+  });
+  await new Promise<void>((resolve) => jwks.listen(0, resolve));
+  jwksUrl = `http://localhost:${(jwks.address() as AddressInfo).port}/.well-known/jwks.json`;
+});
+
+afterAll(() => new Promise((resolve) => jwks.close(resolve)));
+
+/** Токен тестового пользователя из `libs/contracts/src/dev`. */
+function login(user: string): Promise<string> {
+  const u = devUser(user);
+  if (!u) throw new Error(`нет тестового пользователя ${user}`);
+  return issuer.issue({
+    sub: u.userId,
+    roles: u.roles,
+    ...(u.sellerId ? { sellerId: u.sellerId } : {}),
+    scopes: u.scopes,
+  });
+}
+
 async function start(env: Record<string, string>) {
-  const issuer = await DevTokenIssuer.create();
   const moduleRef = await Test.createTestingModule({
-    imports: [AppModule.forRoot(loadConfig(env), issuer)],
+    imports: [AppModule.forRoot(loadConfig({ JWKS_URL: jwksUrl, ...env }))],
   }).compile();
   const app = moduleRef.createNestApplication({ bodyParser: false });
   await app.init();
@@ -45,33 +74,58 @@ describe('gateway по HTTP', () => {
   let order: Awaited<ReturnType<typeof echoService>>;
   let payment: Awaited<ReturnType<typeof echoService>>;
   let erp: Awaited<ReturnType<typeof echoService>>;
+  let auth: Awaited<ReturnType<typeof echoService>>;
+  let catalog: Awaited<ReturnType<typeof echoService>>;
 
   beforeAll(async () => {
-    [order, payment, erp] = await Promise.all([echoService(), echoService(), echoService()]);
+    [order, payment, erp, auth, catalog] = await Promise.all(
+      Array.from({ length: 5 }, () => echoService()),
+    );
     app = await start({
       ORDER_URL: order.url,
       PAYMENT_URL: payment.url,
       ERP_URL: erp.url,
-      DEV_AUTH: 'true',
+      AUTH_URL: auth.url,
+      CATALOG_URL: catalog.url,
       RATE_LIMIT_PER_MINUTE: '5',
     });
   });
 
   afterAll(async () => {
     await app.close();
-    await Promise.all([order, payment, erp].map((s) => new Promise((r) => s.server.close(r))));
+    await Promise.all(
+      [order, payment, erp, auth, catalog].map((s) => new Promise((r) => s.server.close(r))),
+    );
   });
 
   const http = () => request(app.getHttpServer());
-  const login = async (user: string) =>
-    (await http().post('/dev/login').send({ user }).expect(200)).body.accessToken as string;
 
-  it('JWKS открыт, вход тестового пользователя выдаёт Bearer-токен', async () => {
-    const jwks = await http().get('/.well-known/jwks.json').expect(200);
-    expect(jwks.body.keys).toHaveLength(1);
-    const res = await http().post('/dev/login').send({ user: 'buyer-1' }).expect(200);
-    expect(res.body).toMatchObject({ tokenType: 'Bearer', expiresIn: 900 });
-    expect((await http().post('/dev/login').send({ user: 'nobody' })).status).toBe(400);
+  it('/api/auth/** → auth без токена: вход и регистрация; заглушки входа больше нет', async () => {
+    const body = JSON.stringify({ email: 'a@b.uz', password: 'password-1' });
+    await http()
+      .post('/api/auth/login')
+      .set('content-type', 'application/json')
+      .send(body)
+      .expect(200);
+    expect(auth.received.at(-1)).toMatchObject({ method: 'POST', url: '/auth/login', body });
+    expect((await http().post('/dev/login').send({ user: 'buyer-1' })).status).toBe(404);
+    expect((await http().get('/.well-known/jwks.json')).status).toBe(404);
+  });
+
+  it('каталог: витрина — без токена, кабинет и модерация — с токеном', async () => {
+    await http().get('/api/catalog/search?q=x').expect(200);
+    expect(catalog.received.at(-1)?.url).toBe('/catalog/search?q=x');
+    expect((await http().get('/api/seller/products')).status).toBe(401);
+    const token = `Bearer ${await login('seller-a')}`;
+    for (const path of ['/seller/products/p1/submit', '/sellers', '/admin/products/p1/approve']) {
+      await http().post(`/api${path}`).set('Authorization', token).expect(200);
+      expect(catalog.received.at(-1)?.url).toBe(path);
+    }
+    await http().get('/api/seller/staff').set('Authorization', token).expect(200);
+    expect(auth.received.at(-1)?.url).toBe('/seller/staff');
+    // админка денег — по-прежнему payment
+    await http().get('/api/admin/commission-rates').set('Authorization', token).expect(200);
+    expect(payment.received.at(-1)?.url).toBe('/admin/commission-rates');
   });
 
   it('/api/orders без токена — 401, сервис не вызывается', async () => {
@@ -115,7 +169,9 @@ describe('gateway по HTTP', () => {
   });
 
   it('лимит запросов — на пользователя: шестой за минуту — 429, у другого свой счёт', async () => {
-    const [a, b] = [await login('seller-a'), await login('seller-b')];
+    // свои пользователи: счётчики тестовых уже потрачены другими тестами
+    const fresh = () => issuer.issue({ sub: newId(), roles: ['buyer'], scopes: [] });
+    const [a, b] = [await fresh(), await fresh()];
     const statuses: number[] = [];
     for (let i = 0; i < 6; i++) {
       statuses.push((await http().get('/api/orders').set('Authorization', `Bearer ${a}`)).status);
@@ -133,10 +189,9 @@ describe('gateway по HTTP', () => {
 describe('gateway: сбои и настройки', () => {
   it('кабинет продавца: под-заказы — в order, склады и остатки — в erp', async () => {
     const [order, erp] = await Promise.all([echoService(), echoService()]);
-    const app = await start({ ORDER_URL: order.url, ERP_URL: erp.url, DEV_AUTH: 'true' });
+    const app = await start({ ORDER_URL: order.url, ERP_URL: erp.url });
     const http = () => request(app.getHttpServer());
-    const login = await http().post('/dev/login').send({ user: 'seller-a' });
-    const token = `Bearer ${login.body.accessToken}`;
+    const token = `Bearer ${await login('seller-a')}`;
     await http()
       .get('/api/seller/sub-orders?status=CONFIRMED')
       .set('Authorization', token)
@@ -156,21 +211,12 @@ describe('gateway: сбои и настройки', () => {
   });
 
   it('сервис недоступен — 502', async () => {
-    const app = await start({ ORDER_URL: 'http://127.0.0.1:1', DEV_AUTH: 'true' });
-    const token = (await request(app.getHttpServer()).post('/dev/login').send({ user: 'buyer-1' }))
-      .body.accessToken;
+    const app = await start({ ORDER_URL: 'http://127.0.0.1:1' });
+    const token = await login('buyer-1');
     const res = await request(app.getHttpServer())
       .get('/api/orders')
       .set('Authorization', `Bearer ${token}`);
     expect(res.status).toBe(502);
-    await app.close();
-  });
-
-  it('без DEV_AUTH заглушки входа нет', async () => {
-    const app = await start({});
-    expect(
-      (await request(app.getHttpServer()).post('/dev/login').send({ user: 'buyer-1' })).status,
-    ).toBe(404);
     await app.close();
   });
 });

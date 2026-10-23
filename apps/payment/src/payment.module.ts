@@ -13,6 +13,8 @@ import {
   SellerFinanceController,
 } from './interface/finance.controller';
 import { MoneyScheduler } from './interface/money.scheduler';
+import { CategoryReadModel } from './infrastructure/category-read-model';
+import { CatalogEventsHandler } from './interface/catalog-events.handler';
 import { PaymentCommandsHandler } from './interface/payment-commands.handler';
 import { PspWebhookController } from './interface/psp-webhook.controller';
 
@@ -58,6 +60,8 @@ import { PspWebhookController } from './interface/psp-webhook.controller';
       },
     },
     PaymentCommandsHandler,
+    CategoryReadModel,
+    CatalogEventsHandler,
     MoneyScheduler,
   ],
 })

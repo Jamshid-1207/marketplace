@@ -124,11 +124,13 @@ model AccountBalance {
   @@map("account_balances")
 }
 
-/// Read-model категорий (ADR-0007, п. 4): до этапа 5 — seed, потом — события category.*
+/// Read-model категорий (ADR-0007, п. 4) по событиям category.* (SD-05, п. 7)
 model Category {
   categoryId String  @id @map("category_id") @db.Uuid
   parentId   String? @map("parent_id") @db.Uuid
   name       String
+  /// номер последнего события category.* (SD-05, п. 7)
+  version    Int     @default(0)
 
   @@map("categories")
 }

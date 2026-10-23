@@ -20,11 +20,11 @@ RUN pnpm nx run @repo/order:build --output-style=static
 # только production-зависимости сервиса и нужные ему workspace-пакеты
 RUN pnpm --filter @repo/order deploy --legacy --prod /out
 
-# одноразовый шаг миграций (ADR-0004, п. 6): Prisma CLI и prisma/, затем seed каталога
-# при SEED_CATALOG=true (SD-02, п. 5.1). Seed собран вместе с сервисом, поэтому шаг — от build
-FROM build AS migrate
+# одноразовый шаг миграций (ADR-0004, п. 6): Prisma CLI и prisma/. Каталог приходит событиями
+# product.* (SD-05, п. 7), seed больше нет
+FROM deps AS migrate
 WORKDIR /repo/apps/order
-CMD ["sh", "-c", "pnpm exec prisma migrate deploy && node dist/seed.js"]
+CMD ["pnpm", "exec", "prisma", "migrate", "deploy"]
 
 FROM ${NODE_IMAGE} AS runtime
 ENV NODE_ENV=production

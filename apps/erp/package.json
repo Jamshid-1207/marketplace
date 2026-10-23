@@ -98,7 +98,7 @@
             "PORT": "3103",
             "DATABASE_URL": "postgresql://erp_svc:erp_local@localhost:5432/erp_db",
             "KAFKA_BROKERS": "localhost:9092",
-            "JWKS_URL": "http://localhost:3000/.well-known/jwks.json",
+            "JWKS_URL": "http://localhost:3104/.well-known/jwks.json",
             "LOG_PRETTY": "true"
           }
         }

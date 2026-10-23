@@ -1,4 +1,4 @@
-import { DEV_CATALOG, type OrderView } from '@repo/contracts';
+import { DEV_CATALOG, devUser, type OrderView } from '@repo/contracts';
 import { randomUUID } from 'node:crypto';
 import { eventually, GATEWAY_URL, PSP_URL, standFetch } from './stand';
 
@@ -24,9 +24,17 @@ const json = (body: unknown) => ({
   body: JSON.stringify(body),
 });
 
-/** Токен тестового пользователя через заглушку входа gateway. */
+/** Пароль тестовых пользователей: с ним их завёл seed auth (SD-05, решение 6). */
+export const DEV_PASSWORD = process.env.DEV_USER_PASSWORD || 'dev-password-1';
+
+/** Access-токен тестового пользователя: вход через auth (SD-05, п. 5.3). */
 export async function login(user: string): Promise<string> {
-  const res = await call<{ accessToken: string }>(`${GATEWAY_URL}/dev/login`, json({ user }));
+  const email = devUser(user)?.email;
+  if (!email) throw new Error(`нет тестового пользователя ${user}`);
+  const res = await call<{ accessToken: string }>(
+    `${GATEWAY_URL}/api/auth/login`,
+    json({ email, password: DEV_PASSWORD }),
+  );
   if (res.status !== 200) throw new Error(`вход ${user}: ${res.status}`);
   return res.body.accessToken;
 }

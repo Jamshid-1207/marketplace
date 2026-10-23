@@ -4,9 +4,11 @@ import { CheckoutService } from './application/checkout.service';
 import { OrderQueries } from './application/order.queries';
 import { SubOrderService } from './application/sub-order.service';
 import { CONFIG, type Config } from './config';
+import { CatalogReadModel } from './infrastructure/catalog-read-model';
 import { PrismaCheckoutRepository } from './infrastructure/prisma-checkout.repository';
 import { PrismaOrderReader } from './infrastructure/prisma-order.reader';
 import { PrismaSellerSubOrderReader } from './infrastructure/prisma-seller-sub-order.reader';
+import { CatalogEventsHandler } from './interface/catalog-events.handler';
 import { DeadlineScheduler } from './interface/deadline.scheduler';
 import { OrdersController } from './interface/orders.controller';
 import { SagaEventsHandler } from './interface/saga-events.handler';
@@ -52,7 +54,9 @@ import {
       },
     },
     { provide: SELLER_SUB_ORDER_READER, useClass: PrismaSellerSubOrderReader },
+    CatalogReadModel,
     SagaEventsHandler,
+    CatalogEventsHandler,
     DeadlineScheduler,
   ],
 })

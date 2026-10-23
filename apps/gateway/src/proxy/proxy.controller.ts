@@ -16,6 +16,8 @@ export class ProxyController {
   private readonly payment: RequestHandler;
   private readonly erp: RequestHandler;
   private readonly paymentApi: RequestHandler;
+  private readonly auth: RequestHandler;
+  private readonly catalog: RequestHandler;
 
   constructor(@Inject(CONFIG) config: Config) {
     const timeoutMs = config.UPSTREAM_TIMEOUT_MS;
@@ -23,6 +25,51 @@ export class ProxyController {
     this.payment = upstream({ target: config.PAYMENT_URL, timeoutMs });
     this.erp = upstream({ target: config.ERP_URL, timeoutMs, stripPrefix: '/api' });
     this.paymentApi = upstream({ target: config.PAYMENT_URL, timeoutMs, stripPrefix: '/api' });
+    this.auth = upstream({ target: config.AUTH_URL, timeoutMs, stripPrefix: '/api' });
+    this.catalog = upstream({ target: config.CATALOG_URL, timeoutMs, stripPrefix: '/api' });
+  }
+
+  /**
+   * Вход, регистрация и обновление токена — в auth (SD-05, п. 5.3): без JWT, лимит — на IP.
+   * `/auth/me` auth проверяет сам.
+   */
+  @Public()
+  @All('api/auth/*path')
+  accounts(@Req() req: Request, @Res() res: Response, @Next() next: NextFunction): void {
+    void this.auth(req, res, next);
+  }
+
+  /** Сотрудники магазина — в auth (SD-05, п. 5.3). */
+  @All(['api/seller/staff', 'api/seller/staff/*path'])
+  staff(@Req() req: Request, @Res() res: Response, @Next() next: NextFunction): void {
+    void this.auth(req, res, next);
+  }
+
+  /** Витрина каталога — публична (SD-05, п. 6.4). */
+  @Public()
+  @All('api/catalog/*path')
+  storefront(@Req() req: Request, @Res() res: Response, @Next() next: NextFunction): void {
+    void this.catalog(req, res, next);
+  }
+
+  /**
+   * Магазины, товары в кабинете и модерация — в catalog (SD-05, п. 6). Объявлен раньше админки
+   * денег: Express выбирает первый подходящий маршрут, а `api/admin/*path` шире.
+   */
+  @All([
+    'api/sellers',
+    'api/seller/shop',
+    'api/seller/products',
+    'api/seller/products/*path',
+    'api/admin/sellers',
+    'api/admin/sellers/*path',
+    'api/admin/products',
+    'api/admin/products/*path',
+    'api/admin/categories',
+    'api/admin/categories/*path',
+  ])
+  products(@Req() req: Request, @Res() res: Response, @Next() next: NextFunction): void {
+    void this.catalog(req, res, next);
   }
 
   /** Заказы покупателя и под-заказы в кабинете продавца — в order (SD-03, п. 6.3). */

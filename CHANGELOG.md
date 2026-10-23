@@ -5,6 +5,15 @@
 
 ## [Unreleased] · Этап 5: продавцы и каталог
 ### Added
+- **Шаг 5: gateway и стенд** (SD-05, п. 5.3, 8).
+  - Gateway: `/api/auth/**` (публично) и `/api/seller/staff` — в auth; `/api/catalog/**` (публично), `/api/sellers`, `/api/seller/shop`, `/api/seller/products/**`, `/api/admin/sellers | products | categories` — в catalog. Токены проверяются по JWKS auth.
+  - Compose: сервисы auth и catalog с миграциями и seed; `JWKS_URL` всех сервисов — auth; `.env.example` — `DEV_USER_PASSWORD`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`.
+  - E2E: вход — `POST /api/auth/login` паролем из `.env`; `run.sh` поднимает auth и catalog и ждёт, пока демо-данные дойдут событиями до read-моделей order, erp и payment.
+- **Шаг 4: read-модели по событиям catalog** (SD-05, п. 7).
+  - order: `catalog_products` и `catalog_skus` по `product.published | unpublished`; устаревшее по версии событие пропускается. Миграция `3_catalog_events`.
+  - erp: SKU по `product.published` — для складских записей.
+  - payment: категории по `category.created | updated` с версией (миграция `4_catalog_events`); ставки комиссии — свои данные payment.
+  - Группы read-моделей читают `catalog.events` с начала. Интеграционные тесты — через Kafka.
 - **Шаг 3: сервис catalog** (SD-05, п. 6).
   - Магазины: `POST /sellers` — пользователь без магазина, магазин `pending`, `seller.registered`. Админ: `/admin/sellers/:id/approve | reject | block`. Блокировка снимает с витрины все опубликованные товары магазина (`product.unpublished`, `seller_blocked`).
   - Категории: `/admin/categories` — создание и переименование, путь от корня, `category.created | updated`; `GET /catalog/categories` — дерево. Перенос категории в другую ветку отложен на после MVP.
@@ -27,6 +36,10 @@
 - `libs/contracts/src/dev`: у тестовых пользователей появился email для входа.
 - **Шаг 1: контракты** (SD-05, п. 4). События `user.registered` (топик `auth.events`); `seller.registered | approved | rejected | blocked`, `category.created | updated`, `product.published | unpublished` (топик `catalog.events`, ключи — агрегаты). `product.published` несёт товар со всеми SKU, read-модели заменяют его целиком. Фикстуры контракт-тестов на каждое событие.
 - `docs/system-design/05-sellers-and-catalog.md`: дизайн этапа 5 — auth (учётные записи, argon2id, ротация refresh с отзывом семейства, JWKS, сотрудники), catalog (продавцы и модерация, категории, товары и SKU, модерация товаров, поиск ru/uz на PostgreSQL FTS), read-модели order, erp и payment по событиям, отказ от `/dev/login`, 10 сценариев готовности.
+
+### Removed
+- Gateway: заглушка `/dev/login` и свой JWKS (`DEV_AUTH`) — вход теперь через auth.
+- Seed каталога в order (`SEED_CATALOG`), SKU в seed erp и категории в seed payment — данные приходят событиями catalog. Seed payment оставляет ставку «Телефоны» (`SEED_RATES`).
 
 ### Fixed
 - Генератор сервисов: если имя пакета уже занято lib (`libs/auth` → `@repo/auth`), пакет сервиса называется `@repo/<name>-service`.

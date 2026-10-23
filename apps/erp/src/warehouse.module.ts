@@ -4,6 +4,7 @@ import { CabinetService } from './application/cabinet.service';
 import { OrderEventsService } from './application/order-events.service';
 import { StockService } from './application/stock.service';
 import { CONFIG, type Config } from './config';
+import { CatalogReadModel } from './infrastructure/catalog-read-model';
 import { PrismaCabinetRepository } from './infrastructure/prisma-cabinet.repository';
 import { PrismaStockRepository } from './infrastructure/prisma-stock.repository';
 import { CabinetController } from './interface/cabinet.controller';
@@ -40,6 +41,7 @@ import { SalesController } from './interface/sales.controller';
         stock: StockService,
       ) => new CabinetService(cabinet, repository, stock),
     },
+    CatalogReadModel,
     MessagingHandlers,
     ExpiryScheduler,
   ],

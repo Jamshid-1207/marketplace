@@ -25,6 +25,12 @@ describe('loadConfig', () => {
     expect(config).toMatchObject({ PORT: 8080, DB_POOL_MAX: 10, LOG_PRETTY: true });
   });
 
+  it('пустые ADMIN_EMAIL и ADMIN_PASSWORD — как не заданные', () => {
+    expect(
+      loadConfig({ ...required, ADMIN_EMAIL: '', ADMIN_PASSWORD: '' }).ADMIN_EMAIL,
+    ).toBeUndefined();
+  });
+
   it('ADMIN_EMAIL без ADMIN_PASSWORD — ошибка', () => {
     expect(() => loadConfig({ ...required, ADMIN_EMAIL: 'admin@x.uz' })).toThrow(/вместе/);
     expect(

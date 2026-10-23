@@ -10,15 +10,12 @@ export const ConfigSchema = z.object({
   ORDER_URL: z.url().default('http://localhost:3101'),
   PAYMENT_URL: z.url().default('http://localhost:3102'),
   ERP_URL: z.url().default('http://localhost:3103'),
+  AUTH_URL: z.url().default('http://localhost:3104'),
+  CATALOG_URL: z.url().default('http://localhost:3105'),
   /** Сколько ждать ответа сервиса: дольше — `504`. */
   UPSTREAM_TIMEOUT_MS: z.coerce.number().int().positive().default(10_000),
-  /**
-   * Откуда брать ключи JWT. Не задан — ключи заглушки входа самого gateway (до этапа 5);
-   * на этапе 5 — JWKS сервиса auth.
-   */
-  JWKS_URL: z.url().optional(),
-  /** `POST /dev/login`: токены тестовых пользователей. Только для локального запуска и e2e. */
-  DEV_AUTH: z.stringbool().default(false),
+  /** Ключи проверки JWT — JWKS сервиса auth (SD-05, п. 5.2). */
+  JWKS_URL: z.url().default('http://localhost:3104/.well-known/jwks.json'),
   /** Запросов в минуту на пользователя, на анонима — на IP (SD-02, п. 3.1). */
   RATE_LIMIT_PER_MINUTE: z.coerce.number().int().positive().default(100),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),

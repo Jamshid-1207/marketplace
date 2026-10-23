@@ -1,7 +1,7 @@
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { DevTokenIssuer, sellerEndpoints } from '@repo/auth';
-import { money, newId, ReserveStockV1 } from '@repo/contracts';
+import { money, newId, ProductPublishedV1, ReserveStockV1 } from '@repo/contracts';
 import { runInNewChain } from '@repo/observability';
 import { outbox } from '@repo/outbox';
 import { createTopics, eventually, testBrokers, testDatabaseUrl } from '@repo/testing';
@@ -33,6 +33,7 @@ describe('erp: склад (интеграция)', () => {
       { topic: 'erp.commands' },
       { topic: 'erp.events' },
       { topic: 'order.events' },
+      { topic: 'catalog.events' },
       { topic: 'erp-service.dlq' },
     );
     const config = loadConfig({
@@ -333,5 +334,53 @@ describe('erp: склад (интеграция)', () => {
         .send({});
       expect({ endpoint, status: res.status }).toEqual({ endpoint, status: 403 });
     }
+  });
+
+  it('SKU продавца из product.published (Kafka): кабинет видит свой SKU, чужой — 404', async () => {
+    const sellerId = newId();
+    const skuId = newId();
+    const productId = newId();
+    // как catalog: через outbox в catalog.events
+    await runInNewChain(() =>
+      prisma.$transaction((tx) =>
+        outbox.add(
+          tx,
+          ProductPublishedV1,
+          {
+            productId,
+            sellerId,
+            title: 'Термос',
+            categoryPath: [newId()],
+            skus: [{ skuId, skuCode: 'T-1', price: money(100_00), active: true }],
+          },
+          { aggregateId: productId, aggregateVersion: 1 },
+        ),
+      ),
+    );
+    await eventually(
+      async () => (await prisma.catalogSku.count({ where: { skuId, sellerId } })) === 1,
+      {
+        what: 'SKU в read-модели erp',
+      },
+    );
+    const own = await issuer.issue({
+      sub: newId(),
+      roles: ['buyer', 'seller'],
+      sellerId,
+      scopes: [],
+    });
+    const other = await issuer.issue({
+      sub: newId(),
+      roles: ['buyer', 'seller'],
+      sellerId: newId(),
+      scopes: [],
+    });
+    const threshold = (token: string) =>
+      request(app.getHttpServer())
+        .put(`/seller/stock/${skuId}/threshold`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ threshold: 5 });
+    expect((await threshold(own)).status).toBe(204);
+    expect((await threshold(other)).status).toBe(404);
   });
 });
