@@ -50,6 +50,9 @@
     },
     {
       "path": "./apps/catalog"
+    },
+    {
+      "path": "./apps/crm"
     }
   ]
 }

@@ -1,0 +1,94 @@
+// Схема crm_db (ADR-0004). Таблицы outbox и processed_events принадлежат libs (SD-01, п. 6):
+// их DDL — в первой миграции, а модели здесь, чтобы prisma migrate dev не видел расхождений.
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Outbox {
+  id          BigInt    @id @default(autoincrement())
+  eventId     String    @unique @map("event_id") @db.Uuid
+  topic       String
+  messageKey  String    @map("message_key")
+  payload     Json
+  headers     Json      @default("{}")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  publishedAt DateTime? @map("published_at") @db.Timestamptz(6)
+
+  @@index([publishedAt, id], map: "outbox_unpublished")
+  @@map("outbox")
+}
+
+model ProcessedEvent {
+  handler     String
+  eventId     String   @map("event_id") @db.Uuid
+  processedAt DateTime @default(now()) @map("processed_at") @db.Timestamptz(6)
+
+  @@id([handler, eventId])
+  @@index([processedAt], map: "processed_events_processed_at")
+  @@map("processed_events")
+}
+
+// Проекции из событий auth, order и payment (SD-06, п. 5.1). Каждое событие заполняет свои поля:
+// заказ может прийти раньше регистрации, тогда email появится позже (ADR-0004, п. 3, правило 4).
+
+model Customer {
+  buyerId      String    @id @map("buyer_id") @db.Uuid
+  email        String?
+  registeredAt DateTime? @map("registered_at") @db.Timestamptz(6)
+
+  @@map("customers")
+}
+
+/// Под-заказ покупателя: статус меняет только событие с версией заказа больше сохранённой.
+model CustomerOrder {
+  subOrderId   String   @id @map("sub_order_id") @db.Uuid
+  orderId      String   @map("order_id") @db.Uuid
+  buyerId      String   @map("buyer_id") @db.Uuid
+  sellerId     String   @map("seller_id") @db.Uuid
+  amountMinor  BigInt   @map("amount_minor")
+  status       String
+  confirmedAt  DateTime @map("confirmed_at") @db.Timestamptz(6)
+  orderVersion Int      @map("order_version")
+
+  @@index([buyerId])
+  @@index([sellerId, buyerId])
+  @@map("customer_orders")
+}
+
+/// Событие в жизни покупателя. `position` различает строки одного события (под-заказы заказа).
+model TimelineEntry {
+  eventId     String   @map("event_id") @db.Uuid
+  position    Int
+  buyerId     String   @map("buyer_id") @db.Uuid
+  sellerId    String?  @map("seller_id") @db.Uuid
+  orderId     String   @map("order_id") @db.Uuid
+  subOrderId  String?  @map("sub_order_id") @db.Uuid
+  kind        String
+  amountMinor BigInt?  @map("amount_minor")
+  reason      String?
+  occurredAt  DateTime @map("occurred_at") @db.Timestamptz(6)
+
+  @@id([eventId, position])
+  @@index([buyerId, occurredAt])
+  @@map("timeline")
+}
+
+/// Возврат денег за под-заказ. `payment.refunded` не несёт покупателя, и из другого топика может
+/// прийти раньше заказа: покупатель и магазин берутся из `customer_orders` при чтении.
+model Refund {
+  eventId     String   @id @map("event_id") @db.Uuid
+  orderId     String   @map("order_id") @db.Uuid
+  subOrderId  String   @map("sub_order_id") @db.Uuid
+  amountMinor BigInt   @map("amount_minor")
+  occurredAt  DateTime @map("occurred_at") @db.Timestamptz(6)
+
+  @@index([subOrderId])
+  @@map("refunds")
+}
