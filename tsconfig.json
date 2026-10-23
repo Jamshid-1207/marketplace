@@ -47,6 +47,9 @@
     },
     {
       "path": "./apps/auth"
+    },
+    {
+      "path": "./apps/catalog"
     }
   ]
 }

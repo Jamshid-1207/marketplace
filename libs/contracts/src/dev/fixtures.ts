@@ -4,7 +4,8 @@
  * Id постоянные: сценарии e2e ссылаются на них.
  */
 
-// UUID v7 с читаемым хвостом: a… — магазин A, b… — магазин B, c… — категории; …2xx — склады
+// UUID v7 с читаемым хвостом: a… — магазин A, b… — магазин B, c… — категории; …1xx — SKU,
+// …2xx — склады, …3xx — товары
 const id = (tail: string) => `01930000-0000-7000-8000-${tail.padStart(12, '0')}`;
 
 export const DEV_SELLERS = {
@@ -18,6 +19,20 @@ export const DEV_CATEGORIES = {
   home: id('c003'),
   kitchen: id('c004'),
 } as const;
+
+export interface DevCategory {
+  categoryId: string;
+  parentId: string | null;
+  name: string;
+}
+
+/** Дерево категорий: родитель раньше потомков. */
+export const DEV_CATEGORY_TREE: readonly DevCategory[] = [
+  { categoryId: DEV_CATEGORIES.electronics, parentId: null, name: 'Электроника' },
+  { categoryId: DEV_CATEGORIES.phones, parentId: DEV_CATEGORIES.electronics, name: 'Телефоны' },
+  { categoryId: DEV_CATEGORIES.home, parentId: null, name: 'Дом' },
+  { categoryId: DEV_CATEGORIES.kitchen, parentId: DEV_CATEGORIES.home, name: 'Кухня' },
+];
 
 export interface DevUser {
   login: string;
@@ -88,8 +103,23 @@ export const DEV_USERS: readonly DevUser[] = [
   },
 ];
 
+export interface DevShop {
+  sellerId: string;
+  ownerLogin: string;
+  name: string;
+}
+
+/** Магазины seed-продавцов: одобрены модерацией. */
+export const DEV_SHOPS: readonly DevShop[] = [
+  { sellerId: DEV_SELLERS.A, ownerLogin: 'seller-a', name: 'Магазин A' },
+  { sellerId: DEV_SELLERS.B, ownerLogin: 'seller-b', name: 'Магазин B' },
+];
+
+/** Товар seed-каталога с одним SKU, опубликован. */
 export interface DevSku {
+  productId: string;
   skuId: string;
+  skuCode: string;
   sellerId: string;
   title: string;
   priceMinor: number;
@@ -100,7 +130,9 @@ export interface DevSku {
 /** Цены — в тийинах: 1 сум = 100 тийинов. */
 export const DEV_CATALOG: readonly DevSku[] = [
   {
+    productId: id('a301'),
     skuId: id('a101'),
+    skuCode: 'A101',
     sellerId: DEV_SELLERS.A,
     title: 'Смартфон, 8/256 ГБ',
     priceMinor: 2_990_000_00,
@@ -108,7 +140,9 @@ export const DEV_CATALOG: readonly DevSku[] = [
     active: true,
   },
   {
+    productId: id('a302'),
     skuId: id('a102'),
+    skuCode: 'A102',
     sellerId: DEV_SELLERS.A,
     title: 'Чехол силиконовый',
     priceMinor: 59_000_00,
@@ -116,7 +150,9 @@ export const DEV_CATALOG: readonly DevSku[] = [
     active: true,
   },
   {
+    productId: id('b301'),
     skuId: id('b101'),
+    skuCode: 'B101',
     sellerId: DEV_SELLERS.B,
     title: 'Чайник электрический',
     priceMinor: 349_000_00,
@@ -124,7 +160,9 @@ export const DEV_CATALOG: readonly DevSku[] = [
     active: true,
   },
   {
+    productId: id('b302'),
     skuId: id('b102'),
+    skuCode: 'B102',
     sellerId: DEV_SELLERS.B,
     title: 'Набор кастрюль',
     priceMinor: 899_000_00,
@@ -132,7 +170,9 @@ export const DEV_CATALOG: readonly DevSku[] = [
     active: true,
   },
   {
+    productId: id('b399'),
     skuId: id('b199'),
+    skuCode: 'B199',
     sellerId: DEV_SELLERS.B,
     title: 'Снят с продажи',
     priceMinor: 10_000_00,

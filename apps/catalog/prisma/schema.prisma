@@ -1,0 +1,100 @@
+// Схема catalog_db (ADR-0004). Таблицы outbox и processed_events принадлежат libs (SD-01, п. 6):
+// их DDL — в первой миграции, а модели здесь, чтобы prisma migrate dev не видел расхождений.
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Outbox {
+  id          BigInt    @id @default(autoincrement())
+  eventId     String    @unique @map("event_id") @db.Uuid
+  topic       String
+  messageKey  String    @map("message_key")
+  payload     Json
+  headers     Json      @default("{}")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  publishedAt DateTime? @map("published_at") @db.Timestamptz(6)
+
+  @@index([publishedAt, id], map: "outbox_unpublished")
+  @@map("outbox")
+}
+
+model ProcessedEvent {
+  handler     String
+  eventId     String   @map("event_id") @db.Uuid
+  processedAt DateTime @default(now()) @map("processed_at") @db.Timestamptz(6)
+
+  @@id([handler, eventId])
+  @@index([processedAt], map: "processed_events_processed_at")
+  @@map("processed_events")
+}
+
+/// Магазин и его модерация (SD-05, п. 6.2)
+model Seller {
+  sellerId    String   @id @map("seller_id") @db.Uuid
+  ownerUserId String   @unique @map("owner_user_id") @db.Uuid
+  name        String
+  /// pending | active | rejected | blocked
+  status      String
+  reason      String?
+  version     Int
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([status], map: "sellers_status")
+  @@map("sellers")
+}
+
+/// Дерево категорий: путь от корня до самой категории включительно
+model Category {
+  categoryId String   @id @map("category_id") @db.Uuid
+  parentId   String?  @map("parent_id") @db.Uuid
+  name       String
+  path       String[] @db.Uuid
+  version    Int
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("categories")
+}
+
+/// Товар (SD-05, п. 6.1); search — tsvector, пишется SQL с транслитерацией из кода
+model Product {
+  productId       String                   @id @map("product_id") @db.Uuid
+  sellerId        String                   @map("seller_id") @db.Uuid
+  title           String
+  description     String
+  categoryId      String                   @map("category_id") @db.Uuid
+  images          String[]
+  /// draft | on_review | published | rejected | archived
+  status          String
+  rejectionReason String?                  @map("rejection_reason")
+  search          Unsupported("tsvector")?
+  version         Int
+  createdAt       DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime                 @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([sellerId, status], map: "products_seller_status")
+  @@index([status, categoryId], map: "products_status_category")
+  @@map("products")
+}
+
+/// SKU товара; код уникален в пределах продавца (ADR-0006, п. 5)
+model Sku {
+  skuId      String @id @map("sku_id") @db.Uuid
+  productId  String @map("product_id") @db.Uuid
+  sellerId   String @map("seller_id") @db.Uuid
+  skuCode    String @map("sku_code")
+  attributes Json   @default("{}")
+  priceMinor BigInt @map("price_minor")
+  active     Boolean
+
+  @@unique([sellerId, skuCode], map: "skus_seller_code")
+  @@index([productId], map: "skus_product")
+  @@map("skus")
+}
