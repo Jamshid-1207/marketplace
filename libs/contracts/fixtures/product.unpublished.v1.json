@@ -1,0 +1,16 @@
+{
+  "eventId": "0192b4c6-0000-7000-8000-00000000e309",
+  "type": "product.unpublished",
+  "version": 1,
+  "aggregateType": "product",
+  "aggregateId": "0192b4c6-0000-7000-8000-00000000a301",
+  "aggregateVersion": 4,
+  "occurredAt": "2026-10-23T14:00:00.000Z",
+  "correlationId": "req-catalog-1",
+  "causationId": null,
+  "payload": {
+    "productId": "0192b4c6-0000-7000-8000-00000000a301",
+    "sellerId": "0192b4c6-0000-7000-8000-00000000a000",
+    "reason": "seller_blocked"
+  }
+}

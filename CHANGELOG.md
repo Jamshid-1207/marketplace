@@ -5,7 +5,11 @@
 
 ## [Unreleased] · Этап 5: продавцы и каталог
 ### Added
-- `docs/system-design/05-sellers-and-catalog.md`: дизайн этапа 5 на согласовании — auth (учётные записи, argon2id, ротация refresh с отзывом семейства, JWKS, сотрудники), catalog (продавцы и модерация, категории, товары и SKU, модерация товаров, поиск ru/uz на PostgreSQL FTS), read-модели order, erp и payment по событиям, отказ от `/dev/login`, 10 сценариев готовности.
+- **Шаг 1: контракты** (SD-05, п. 4). События `user.registered` (топик `auth.events`); `seller.registered | approved | rejected | blocked`, `category.created | updated`, `product.published | unpublished` (топик `catalog.events`, ключи — агрегаты). `product.published` несёт товар со всеми SKU, read-модели заменяют его целиком. Фикстуры контракт-тестов на каждое событие.
+- `docs/system-design/05-sellers-and-catalog.md`: дизайн этапа 5 — auth (учётные записи, argon2id, ротация refresh с отзывом семейства, JWKS, сотрудники), catalog (продавцы и модерация, категории, товары и SKU, модерация товаров, поиск ru/uz на PostgreSQL FTS), read-модели order, erp и payment по событиям, отказ от `/dev/login`, 10 сценариев готовности.
+
+### Decided
+- SD-05 утверждён: ключ подписи — в базе auth, создаётся при первом старте; сотрудники добавляются по email без приглашений; правка текста, категории или состава SKU опубликованного товара снимает его до повторной модерации, цена и активность — сразу; узбекский поиск — словарь `simple` и транслитерация кириллицы; первый админ — из env; демо-данные создают seed auth и catalog из `libs/contracts/src/dev`.
 
 ## [0.5.0] - 2026-10-23 · Этап 4: деньги ✅
 Критерии SD-04 выполнены: сценарии этапа 4 и этапов 2–3 проходят в job `e2e`, интеграционные тесты журнала — в `integration`, все пять job'ов CI зелёные.

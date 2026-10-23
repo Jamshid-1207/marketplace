@@ -1,0 +1,31 @@
+{
+  "eventId": "0192b4c6-0000-7000-8000-00000000e308",
+  "type": "product.published",
+  "version": 1,
+  "aggregateType": "product",
+  "aggregateId": "0192b4c6-0000-7000-8000-00000000a301",
+  "aggregateVersion": 3,
+  "occurredAt": "2026-10-23T14:00:00.000Z",
+  "correlationId": "req-catalog-1",
+  "causationId": null,
+  "payload": {
+    "productId": "0192b4c6-0000-7000-8000-00000000a301",
+    "sellerId": "0192b4c6-0000-7000-8000-00000000a000",
+    "title": "Смартфон, 8/256 ГБ",
+    "categoryPath": [
+      "0192b4c6-0000-7000-8000-00000000c001",
+      "0192b4c6-0000-7000-8000-00000000c002"
+    ],
+    "skus": [
+      {
+        "skuId": "0192b4c6-0000-7000-8000-00000000a101",
+        "skuCode": "PHONE-256",
+        "price": {
+          "amountMinor": 299000000,
+          "currency": "UZS"
+        },
+        "active": true
+      }
+    ]
+  }
+}

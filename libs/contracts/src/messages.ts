@@ -27,6 +27,15 @@ import { PaymentCreatedV1 } from './events/payment/payment-created.v1';
 import { PaymentFailedV1 } from './events/payment/payment-failed.v1';
 import { PaymentRefundedV1 } from './events/payment/payment-refunded.v1';
 import { PayoutFailedV1, PayoutPaidV1 } from './events/payment/payout-events.v1';
+import { UserRegisteredV1 } from './events/auth/user-registered.v1';
+import { CategoryCreatedV1, CategoryUpdatedV1 } from './events/catalog/category-events.v1';
+import { ProductPublishedV1, ProductUnpublishedV1 } from './events/catalog/product-events.v1';
+import {
+  SellerApprovedV1,
+  SellerBlockedV1,
+  SellerRegisteredV1,
+  SellerRejectedV1,
+} from './events/catalog/seller-events.v1';
 import { SmokePingedV1 } from './events/smoke/smoke-pinged.v1';
 import { MessageRegistry } from './registry';
 
@@ -67,4 +76,14 @@ export const messages = new MessageRegistry([
   // выплаты продавцам (SD-04, п. 6)
   PayoutPaidV1,
   PayoutFailedV1,
+  // продавцы и каталог (SD-05, п. 4)
+  UserRegisteredV1,
+  SellerRegisteredV1,
+  SellerApprovedV1,
+  SellerRejectedV1,
+  SellerBlockedV1,
+  CategoryCreatedV1,
+  CategoryUpdatedV1,
+  ProductPublishedV1,
+  ProductUnpublishedV1,
 ]);

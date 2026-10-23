@@ -1,0 +1,16 @@
+{
+  "eventId": "0192b4c6-0000-7000-8000-00000000e302",
+  "type": "seller.registered",
+  "version": 1,
+  "aggregateType": "seller",
+  "aggregateId": "0192b4c6-0000-7000-8000-00000000a000",
+  "aggregateVersion": 1,
+  "occurredAt": "2026-10-23T14:00:00.000Z",
+  "correlationId": "req-catalog-1",
+  "causationId": null,
+  "payload": {
+    "sellerId": "0192b4c6-0000-7000-8000-00000000a000",
+    "ownerUserId": "0192b4c6-0000-7000-8000-00000000a001",
+    "name": "Магазин A"
+  }
+}

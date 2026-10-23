@@ -1,0 +1,14 @@
+{
+  "eventId": "0192b4c6-0000-7000-8000-00000000e303",
+  "type": "seller.approved",
+  "version": 1,
+  "aggregateType": "seller",
+  "aggregateId": "0192b4c6-0000-7000-8000-00000000a000",
+  "aggregateVersion": 2,
+  "occurredAt": "2026-10-23T14:00:00.000Z",
+  "correlationId": "req-catalog-1",
+  "causationId": null,
+  "payload": {
+    "sellerId": "0192b4c6-0000-7000-8000-00000000a000"
+  }
+}
