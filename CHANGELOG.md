@@ -5,7 +5,10 @@
 
 ## [Unreleased] · Этап 7: Storefront
 ### Added
-- `docs/system-design/07-storefront.md`: дизайн этапа 7 — storefront на Next.js как BFF (токены в `HttpOnly` cookie, одно обновление токена на refresh, Server Actions), страницы каталога, корзины, оформления и заказов, корзина в order с гостевой корзиной и объединением при входе, очистка корзины при подтверждении заказа, наличие на витрине (`stock.level-changed` erp → catalog), возврат с оплаты fake-psp, лимит гостей по IP клиента, Playwright-сценарии, демо-витрина; 12 сценариев готовности. На согласовании.
+- `docs/system-design/07-storefront.md`: дизайн этапа 7 — storefront на Next.js как BFF (токены в `HttpOnly` cookie, одно обновление токена на refresh, Server Actions), страницы каталога, корзины, оформления и заказов, корзина в order с гостевой корзиной и объединением при входе, очистка корзины при подтверждении заказа, наличие на витрине (`stock.level-changed` erp → catalog), возврат с оплаты fake-psp, лимит гостей по IP клиента, Playwright-сценарии, демо-витрина; 12 сценариев готовности.
+
+### Decided
+- SD-07 утверждён: storefront — BFF с токенами в `HttpOnly` cookie; одно обновление токена на refresh в middleware; мутации — Server Actions, чтение для клиента — `GET /bff/**`; гостевая корзина в `localStorage`, при объединении — большее количество; корзина очищается при подтверждении заказа; `stock.level-changed` — только при смене «есть / нет»; адрес возврата с оплаты — из конфига payment; данные для показа — синхронным чтением из catalog с деградацией; лимит гостей — по `X-Forwarded-For` только от адреса storefront; тексты — next-intl; UI-тесты — Playwright в job `e2e`; демо-витрина — `SEED_SHOWCASE`.
 
 ## [0.7.0] - 2026-10-24 · Этап 6: CRM и уведомления ✅
 Критерии SD-06 выполнены: сценарии этапа 6 и этапов 2–5 проходят в job `e2e` (письма — через Mailpit), интеграционные тесты crm и notification — в `integration`, все пять job'ов CI зелёные.
