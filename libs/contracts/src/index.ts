@@ -15,6 +15,7 @@ export * from './commands/payment/capture-payment.v1';
 export * from './commands/payment/create-payment.v1';
 export * from './commands/payment/refund-payment.v1';
 export * from './dev/fixtures';
+export * from './dev/showcase';
 export * from './events/auth/user-registered.v1';
 export * from './events/catalog/category-events.v1';
 export * from './events/catalog/product-events.v1';

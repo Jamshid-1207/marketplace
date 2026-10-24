@@ -8,6 +8,7 @@ dist
 **/dist
 **/out-tsc
 **/test-output
+**/.next
 coverage
 # клиент Prisma генерируется при сборке
 apps/*/src/generated

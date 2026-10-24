@@ -5,6 +5,12 @@
 
 ## [Unreleased] · Этап 7: Storefront
 ### Added
+- **Шаг 5: стенд витрины, демо-витрина, e2e API** (SD-07, п. 8, решение 12).
+  - `apps/storefront/Dockerfile`: сборка в Nx, образ — standalone-сервер Next и статика, `node:24.11.1-alpine`, пользователь `node`, порт 3001.
+  - compose: сервис `storefront` в профиле `full` (порт 3001, healthcheck `/health/ready`). Подсеть сети compose фиксирована — `172.30.240.0/24`, динамические адреса — из нижней половины (`ip_range`), у storefront — `172.30.240.200`: ему доверяет gateway (`TRUST_PROXY`). У payment — `PAYMENT_RETURN_URL=http://localhost:3001/orders/{orderId}`.
+  - Демо-витрина `DEV_SHOWCASE` (`libs/contracts/src/dev/showcase.ts`): 18 товаров магазинов A и B в четырёх демо-категориях, с вариантами, описаниями и остатками, среди них — закончившиеся. Seed catalog и erp при `SEED_SHOWCASE=true` (по умолчанию в compose); в `compose.e2e.yaml` — `false`, ожидания `run.sh` не меняются. Наличие для её остатков даёт `sync-levels`.
+  - E2E `storefront.e2e-spec.ts`: остаток обнулён — «нет в наличии» в поиске и карточке, фильтр `inStock`, заказ отменён `out_of_stock` с `unavailableSkus`; остаток вернули — снова в наличии. Корзина нового покупателя: объединение (большее количество, повтор ничего не меняет), оплата кнопкой на странице fake-psp — ссылка и `303` на страницу заказа витрины, после `CONFIRMED` купленное ушло из корзины.
+  - Тест контрактов: id демо-витрины уникальны и не пересекаются с каталогом e2e, у каждого SKU есть склад и цена.
 - **Шаг 4: приложение `apps/storefront`** (SD-07, п. 3).
   - Next.js 16.4 (App Router, Turbopack, `output: 'standalone'` от корня монорепо), React 19, Tailwind 4, компоненты в стиле shadcn/ui (`components/ui`: cva, tailwind-merge), next-intl со словарём `ru`. Теги Nx — `type:app`, `platform:web`; цели — `build`, `typecheck`, `dev` (порт 3001), `serve`; lint и test — общими плагинами.
   - BFF и сессия: токены auth — в `HttpOnly` cookie `sf_access` и `sf_refresh` (`SameSite=Lax`, `Secure` при https). Middleware (`proxy.ts`) ставит один `X-Request-Id` на запрос и обновляет access-токен за минуту до истечения; новые cookie — и в ответ, и в текущий запрос. Одно обновление на refresh-токен: параллельные запросы ждут одного вызова auth, результат хранится 30 с по SHA-256 старого токена; отказ auth удаляет сессию, ошибка сети — нет.

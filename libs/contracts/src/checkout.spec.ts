@@ -8,6 +8,7 @@ import {
   DEV_WAREHOUSES,
   devUser,
 } from './dev/fixtures';
+import { DEV_SHOWCASE, SHOWCASE_WAREHOUSE } from './dev/showcase';
 import { messages } from './messages';
 import { PositiveMoneySchema } from './money';
 
@@ -112,6 +113,28 @@ describe('сообщения оформления', () => {
       if (definition.topic === 'payment.events') expect(definition.key(payload)).toBe(paymentKey);
       if (definition.topic === 'order.events') expect(definition.key(payload)).toBe('order');
     }
+  });
+});
+
+describe('демо-витрина (SD-07, решение 12)', () => {
+  it('id уникальны и не пересекаются с каталогом e2e; склад и цена у каждого SKU', () => {
+    const skus = DEV_SHOWCASE.flatMap((p) => p.skus);
+    const ids = [
+      ...DEV_SHOWCASE.map((p) => p.productId),
+      ...skus.map((s) => s.skuId),
+      ...DEV_CATALOG.flatMap((s) => [s.productId, s.skuId]),
+    ];
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const product of DEV_SHOWCASE) {
+      expect(DEV_WAREHOUSES.map((w) => w.warehouseId)).toContain(
+        SHOWCASE_WAREHOUSE[product.sellerId],
+      );
+      expect(product.skus.length).toBeGreaterThan(0);
+    }
+    expect(skus.every((s) => Number.isSafeInteger(s.priceMinor) && s.priceMinor > 0)).toBe(true);
+    expect(new Set(skus.map((s) => s.skuCode)).size).toBe(skus.length);
+    // на витрине есть и «нет в наличии»
+    expect(skus.some((s) => s.onHand === 0)).toBe(true);
   });
 });
 

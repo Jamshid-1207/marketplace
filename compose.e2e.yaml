@@ -33,6 +33,13 @@ services:
     environment:
       # все сценарии идут от нескольких тестовых пользователей подряд
       RATE_LIMIT_PER_MINUTE: '10000'
+  # e2e работает с DEV_CATALOG: демо-витрина изменила бы ожидания run.sh (SD-07, решение 12)
+  catalog-migrate:
+    environment:
+      SEED_SHOWCASE: 'false'
+  erp-migrate:
+    environment:
+      SEED_SHOWCASE: 'false'
   fake-psp:
     environment:
       PSP_TEST_API: 'true'

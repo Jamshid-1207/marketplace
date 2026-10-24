@@ -2,6 +2,7 @@ import {
   CategoryCreatedV1,
   DEV_CATALOG,
   DEV_CATEGORY_TREE,
+  DEV_SHOWCASE,
   DEV_SHOPS,
   devUser,
   money,
@@ -64,6 +65,54 @@ export async function seedCatalog(prisma: PrismaClient): Promise<number> {
 }
 
 const ref = (aggregateId: string, aggregateVersion: number) => ({ aggregateId, aggregateVersion });
+
+/**
+ * Демо-витрина (SD-07, решение 12): товары с вариантами и описаниями у магазинов и в категориях
+ * демо-каталога — поэтому только после `seedCatalog`. Повторный запуск событий не повторяет.
+ */
+export async function seedShowcase(prisma: PrismaClient): Promise<number> {
+  return runInNewChain(() =>
+    prisma.$transaction(async (tx) => {
+      let created = 0;
+      for (const product of DEV_SHOWCASE) {
+        const categoryId = product.categoryPath[product.categoryPath.length - 1];
+        const inserted = await tx.$executeRaw`
+          INSERT INTO products (product_id, seller_id, title, description, category_id, images,
+                                status, search, version)
+          VALUES (${product.productId}::uuid, ${product.sellerId}::uuid, ${product.title},
+                  ${product.description}, ${categoryId}::uuid, '{}', 'published',
+                  ${searchVector(product.title, product.description)}, 1)
+          ON CONFLICT DO NOTHING`;
+        if (inserted === 0) continue;
+        created++;
+        for (const sku of product.skus) {
+          await tx.$executeRaw`
+            INSERT INTO skus (sku_id, product_id, seller_id, sku_code, attributes, price_minor, active)
+            VALUES (${sku.skuId}::uuid, ${product.productId}::uuid, ${product.sellerId}::uuid,
+                    ${sku.skuCode}, ${JSON.stringify(sku.attributes)}::jsonb, ${sku.priceMinor}, true)`;
+        }
+        await outbox.add(
+          tx,
+          ProductPublishedV1,
+          {
+            productId: product.productId,
+            sellerId: product.sellerId,
+            title: product.title,
+            categoryPath: product.categoryPath,
+            skus: product.skus.map((sku) => ({
+              skuId: sku.skuId,
+              skuCode: sku.skuCode,
+              price: money(sku.priceMinor),
+              active: true,
+            })),
+          },
+          ref(product.productId, 1),
+        );
+      }
+      return created;
+    }),
+  );
+}
 
 async function seedProduct(
   tx: Prisma.TransactionClient,
