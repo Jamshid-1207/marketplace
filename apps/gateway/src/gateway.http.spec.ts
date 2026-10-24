@@ -222,6 +222,48 @@ describe('gateway: сбои и настройки', () => {
     await Promise.all([order, erp].map((s) => new Promise((r) => s.server.close(r))));
   });
 
+  it('корзина покупателя — в order, только с токеном (SD-07, п. 5.2)', async () => {
+    const order = await echoService();
+    const app = await start({ ORDER_URL: order.url });
+    const http = () => request(app.getHttpServer());
+    const token = `Bearer ${await login('buyer-1')}`;
+    await http().get('/api/cart').set('Authorization', token).expect(200);
+    expect(order.received.at(-1)?.url).toBe('/cart');
+    await http()
+      .put('/api/cart/lines/sku-1')
+      .set('Authorization', token)
+      .set('content-type', 'application/json')
+      .send('{"qty":2}')
+      .expect(200);
+    expect(order.received.at(-1)).toMatchObject({ method: 'PUT', url: '/cart/lines/sku-1' });
+    expect(order.received.at(-1)?.body).toBe('{"qty":2}');
+    expect((await http().post('/api/cart/merge')).status).toBe(401);
+    await app.close();
+    await new Promise((r) => order.server.close(r));
+  });
+
+  it('лимит гостей: X-Forwarded-For — только от доверенного прокси (SD-07, решение 9)', async () => {
+    const catalog = await echoService();
+    const gateway = (env: Record<string, string> = {}) =>
+      start({ CATALOG_URL: catalog.url, RATE_LIMIT_PER_MINUTE: '1', ...env });
+    const guest = (app: INestApplication, ip: string) =>
+      request(app.getHttpServer()).get('/api/catalog/search').set('X-Forwarded-For', ip);
+
+    // за storefront: у каждого гостя свой счёт, а не общий на адрес storefront
+    const behindStorefront = await gateway({ TRUST_PROXY: 'loopback' });
+    expect((await guest(behindStorefront, '203.0.113.1')).status).toBe(200);
+    expect((await guest(behindStorefront, '203.0.113.2')).status).toBe(200);
+    expect((await guest(behindStorefront, '203.0.113.1')).status).toBe(429);
+
+    // напрямую, без доверенного прокси: подделанный заголовок не даёт нового счёта
+    const direct = await gateway();
+    expect((await guest(direct, '203.0.113.1')).status).toBe(200);
+    expect((await guest(direct, '203.0.113.2')).status).toBe(429);
+
+    await Promise.all([behindStorefront.close(), direct.close()]);
+    await new Promise((r) => catalog.server.close(r));
+  });
+
   it('сервис недоступен — 502', async () => {
     const app = await start({ ORDER_URL: 'http://127.0.0.1:1' });
     const token = await login('buyer-1');

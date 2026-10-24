@@ -45,6 +45,7 @@ const saga = (state: CheckoutState, changes: Partial<CheckoutSaga> = {}): Checko
   paymentId: PAY,
   paymentUrl: 'http://psp.test/pay/psp_1',
   cancelReason: null,
+  unavailableSkus: [],
   deadlineAt: new Date(now.getTime() - 1),
   version: 3,
   ...changes,
@@ -107,7 +108,11 @@ describe('saga оформления (SD-03, п. 6.1)', () => {
 
   it('RESERVING + stock.rejected → CANCELLED (out_of_stock), оплата не запрашивается', () => {
     const t = run('RESERVING', rejected);
-    expect(t.saga).toMatchObject({ state: 'CANCELLED', cancelReason: 'out_of_stock' });
+    expect(t.saga).toMatchObject({
+      state: 'CANCELLED',
+      cancelReason: 'out_of_stock',
+      unavailableSkus: ['sku'],
+    });
     expect(t.commands).toEqual([]);
     expect(t.events[0]).toMatchObject({ type: 'order.cancelled', reason: 'out_of_stock' });
   });
@@ -162,6 +167,7 @@ describe('saga оформления (SD-03, п. 6.1)', () => {
 
   it('COMMITTING + stock.commit-failed → CANCELLED (out_of_stock), CancelPayment и ReleaseStock', () => {
     expect(run('COMMITTING', commitFailed).saga.cancelReason).toBe('out_of_stock');
+    expect(run('COMMITTING', commitFailed).saga.unavailableSkus).toEqual(['sku']);
     expect(commands('COMMITTING', commitFailed)).toEqual(['CancelPayment', 'ReleaseStock']);
   });
 

@@ -48,11 +48,17 @@ const OrderLineView = z.object({
   unitPrice: MoneySchema,
 });
 
+/** Возврат денег за отменённый под-заказ: запрошен у провайдера или подтверждён. */
+export const RefundStatus = z.enum(['REQUESTED', 'REFUNDED']);
+export type RefundStatus = z.infer<typeof RefundStatus>;
+
 /** `GET /orders/:id`: статус оформления — из saga, под-заказов — из `sub_orders` (ADR-0005, п. 7). */
 export const OrderView = z.object({
   orderId: z.uuid(),
   status: CheckoutState,
   cancelReason: CancelReason.nullable(),
+  /** SKU, которых не хватило при отмене `out_of_stock`: витрина отмечает их в корзине (SD-07, п. 3.3). */
+  unavailableSkus: z.array(z.uuid()),
   /** Только в `AWAITING_PAYMENT`: storefront перенаправляет на страницу оплаты (ADR-0005, п. 9). */
   paymentUrl: z.url().nullable(),
   total: MoneySchema,
@@ -62,6 +68,7 @@ export const OrderView = z.object({
       subOrderId: z.uuid(),
       sellerId: z.uuid(),
       status: SubOrderStatus,
+      refundStatus: RefundStatus.nullable(),
       amount: MoneySchema,
       lines: z.array(OrderLineView),
     }),

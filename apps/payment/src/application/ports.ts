@@ -114,8 +114,10 @@ export type VoidResult = { status: 'voided' } | { status: 'rejected'; reason: st
  * Временная ошибка (5xx, таймаут) — исключение; окончательный отказ — результат `rejected`.
  */
 export interface PspGateway {
+  /** `orderId` — для адреса, куда провайдер вернёт покупателя после оплаты (SD-07, п. 3.3). */
   create(input: {
     paymentId: string;
+    orderId: string;
     amount: Money;
   }): Promise<{ providerPaymentId: string; paymentUrl: string }>;
   capture(paymentId: string, providerPaymentId: string): Promise<CaptureResult>;

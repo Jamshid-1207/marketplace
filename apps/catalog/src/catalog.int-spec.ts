@@ -298,10 +298,12 @@ describe('catalog: продавцы, товары, поиск (интеграц�
 
     // наличие хранится отдельно от товара и переживает повторную модерацию
     await stock.levelChanged(4, { skuId: second, sellerId, inStock: true });
-    await as(seller)
+    // правка опубликованного товара сама отправляет его на модерацию (SD-05, п. 6.3)
+    const edited = await as(seller)
       .patch(`/seller/products/${live.productId}`, { title: `Термос ${tag} 2` })
       .expect(200);
-    await as(seller).post(`/seller/products/${live.productId}/submit`).expect(200);
+    expect(edited.body.status).toBe('on_review');
+    expect(await hits({ inStock: 'true' })).toEqual([]);
     await as(admin).post(`/admin/products/${live.productId}/approve`).expect(200);
     expect(await hits({ inStock: 'true' })).toMatchObject([{ productId: live.productId }]);
   });

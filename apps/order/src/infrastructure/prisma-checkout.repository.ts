@@ -19,16 +19,34 @@ import type {
   NewOrder,
   SubOrderRecord,
 } from '../application/ports';
+import type { CartLine } from '../domain/cart';
 import type { CheckoutSaga } from '../domain/checkout';
 import type { CatalogItem } from '../domain/order';
 import type { Prisma } from '../generated/prisma/client';
+import { PrismaCartTx } from './prisma-cart.repository';
 import { PrismaService } from './prisma.service';
 
 /** Состояния с дедлайном (ADR-0005, п. 6). */
 const ACTIVE_STATES = ['RESERVING', 'AWAITING_PAYMENT', 'COMMITTING', 'CAPTURING'];
 
 class PrismaCheckoutTx implements CheckoutTx {
-  constructor(private readonly tx: Prisma.TransactionClient) {}
+  private readonly cart: PrismaCartTx;
+
+  constructor(private readonly tx: Prisma.TransactionClient) {
+    this.cart = new PrismaCartTx(tx);
+  }
+
+  lockCart(buyerId: string): Promise<CartLine[]> {
+    return this.cart.lockCart(buyerId);
+  }
+
+  setCartLine(buyerId: string, line: CartLine): Promise<void> {
+    return this.cart.setCartLine(buyerId, line);
+  }
+
+  removeCartLine(buyerId: string, skuId: string): Promise<void> {
+    return this.cart.removeCartLine(buyerId, skuId);
+  }
 
   async lockSaga(orderId: string): Promise<LockedSaga | null> {
     const rows = await this.tx.$queryRaw<{ order_id: string }[]>`
@@ -187,6 +205,7 @@ class PrismaCheckoutTx implements CheckoutTx {
         paymentId: saga.paymentId,
         paymentUrl: saga.paymentUrl,
         cancelReason: saga.cancelReason as CancelReason | null,
+        unavailableSkus: saga.unavailableSkus,
         deadlineAt: saga.deadlineAt,
         version: saga.version,
       },
@@ -206,6 +225,7 @@ function sagaColumns(saga: CheckoutSaga) {
     paymentId: saga.paymentId,
     paymentUrl: saga.paymentUrl,
     cancelReason: saga.cancelReason,
+    unavailableSkus: saga.unavailableSkus,
     deadlineAt: saga.deadlineAt,
     version: saga.version,
   };

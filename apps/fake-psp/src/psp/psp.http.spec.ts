@@ -94,6 +94,29 @@ describe('fake-psp по HTTP', () => {
     expect((await http().get(`/test/payments/${id}`)).body.captures).toBe(1);
   });
 
+  it('адрес возврата: ссылка на странице, после «Оплатить» — 303 в магазин (SD-07, п. 3.3)', async () => {
+    const returnUrl = 'http://localhost:3001/orders/order-1';
+    const created = await http()
+      .post('/v1/payments')
+      .set('Idempotency-Key', 'create-return')
+      .send({ merchantReference: 'pay-r', amountMinor: 1_000, currency: 'UZS', returnUrl });
+    expect(created.status).toBe(201);
+    const { id } = created.body;
+
+    expect((await http().get(`/pay/${id}`)).text).toContain(`href="${returnUrl}"`);
+    const declined = await http().post(`/pay/${id}/decline`);
+    expect(declined.headers.location).toBe(`/pay/${id}`); // после отказа можно попробовать снова
+    const paid = await http().post(`/pay/${id}/authorize`);
+    expect(paid.status).toBe(303);
+    expect(paid.headers.location).toBe(returnUrl);
+
+    const invalid = await http()
+      .post('/v1/payments')
+      .set('Idempotency-Key', 'create-bad-return')
+      .send({ merchantReference: 'pay-x', amountMinor: 1_000, currency: 'UZS', returnUrl: 'nope' });
+    expect(invalid.status).toBe(400);
+  });
+
   it('тестовое API: отказ, затем оплата; истечение неоплаченного', async () => {
     const { id } = (await createPayment('create-2')).body;
     await http().post(`/test/payments/${id}/decline`).expect(200);

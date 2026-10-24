@@ -16,6 +16,8 @@ export interface CheckoutSaga {
   paymentId: string | null;
   paymentUrl: string | null;
   cancelReason: CancelReason | null;
+  /** SKU, которых не хватило: витрина отмечает их в корзине (SD-07, п. 3.3). */
+  unavailableSkus: string[];
   deadlineAt: Date | null;
   /** aggregateVersion заказа: увеличивается сервисом на каждое событие заказа. */
   version: number;
@@ -105,6 +107,7 @@ export function startCheckout(order: OrderFacts, deadlines: Deadlines): Transiti
       paymentId: null,
       paymentUrl: null,
       cancelReason: null,
+      unavailableSkus: [],
       deadlineAt: at(deadlines.now, deadlines.reserveMs),
       version: 0,
     },
@@ -162,7 +165,8 @@ export function transition(
       };
 
     case 'RESERVING stock.rejected':
-      return cancel(saga, order, 'out_of_stock', []);
+      if (input.type !== 'stock.rejected') break;
+      return cancel({ ...saga, unavailableSkus: input.unavailable }, order, 'out_of_stock', []);
 
     case 'RESERVING deadline':
       // резерв мог всё же пройти: снимаем на всякий случай
@@ -193,7 +197,11 @@ export function transition(
       };
 
     case 'COMMITTING stock.commit-failed':
-      return cancel(saga, order, 'out_of_stock', ['CancelPayment', 'ReleaseStock']);
+      if (input.type !== 'stock.commit-failed') break;
+      return cancel({ ...saga, unavailableSkus: input.unavailable }, order, 'out_of_stock', [
+        'CancelPayment',
+        'ReleaseStock',
+      ]);
 
     case 'COMMITTING deadline':
       // заказ не отменяется: деньги заблокированы, erp ответит после восстановления (ADR-0005, п. 6)

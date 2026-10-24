@@ -476,6 +476,151 @@ describe('order: оформление (интеграция)', () => {
       expect((await cancel(buyerA)).body.status).toBe('CANCELLED'); // повтор — тот же статус
       const commands = await outboxOf(orderId);
       expect(commands.slice(-3)).toEqual(['sub-order.cancelled', 'ReleaseStock', 'RefundPayment']);
+      // витрина показывает, что деньги возвращаются (SD-07, п. 3.3)
+      const view = await get(buyerA, `/orders/${orderId}`);
+      const cancelled = view.body.subOrders.find(
+        (s: { subOrderId: string }) => s.subOrderId === subs[1].subOrderId,
+      );
+      expect(cancelled).toMatchObject({ status: 'CANCELLED', refundStatus: 'REQUESTED' });
+    });
+  });
+
+  describe('корзина (SD-07, п. 5)', () => {
+    const [, cover] = DEV_CATALOG;
+    const inactive = DEV_CATALOG.find((s) => !s.active)?.skuId as string;
+
+    /** Новый покупатель со своей корзиной. */
+    async function buyer() {
+      const userId = newId();
+      return { userId, token: await issuer.issue({ sub: userId, roles: ['buyer'], scopes: [] }) };
+    }
+    const put = (token: string, skuId: string, qty: number) =>
+      http().put(`/cart/lines/${skuId}`).set('Authorization', `Bearer ${token}`).send({ qty });
+    const cartOf = async (token: string) => {
+      const res = await get(token, '/cart');
+      expect(res.status).toBe(200);
+      return res.body as {
+        lines: { skuId: string; qty: number; available: boolean }[];
+        total: { amountMinor: number };
+      };
+    };
+    const quantities = async (token: string) =>
+      Object.fromEntries((await cartOf(token)).lines.map((l) => [l.skuId, l.qty]));
+
+    it('PUT, GET, DELETE; снятый с продажи — 422; чужая корзина не видна (ADR-0006, п. 8)', async () => {
+      const a = await buyer();
+      const b = await buyer();
+      const res = await put(a.token, phone.skuId, 2);
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({
+        lines: [{ skuId: phone.skuId, productId: phone.productId, qty: 2, available: true }],
+        total: { amountMinor: 2 * phone.priceMinor },
+      });
+      expect((await put(a.token, phone.skuId, 2)).status).toBe(200); // повтор — то же количество
+
+      const rejected = await put(a.token, inactive, 1);
+      expect(rejected.status).toBe(422);
+      expect(rejected.body.unavailable).toEqual([inactive]);
+      expect((await put(a.token, phone.skuId, 100)).status).toBe(400);
+      expect((await http().get('/cart')).status).toBe(401);
+
+      expect((await cartOf(b.token)).lines).toEqual([]);
+      // другой покупатель не удалит чужую строку: путь без покупателя, он берётся из токена
+      await http()
+        .delete(`/cart/lines/${phone.skuId}`)
+        .set('Authorization', `Bearer ${b.token}`)
+        .expect(204);
+      expect(await quantities(a.token)).toEqual({ [phone.skuId]: 2 });
+
+      await http()
+        .delete(`/cart/lines/${phone.skuId}`)
+        .set('Authorization', `Bearer ${a.token}`)
+        .expect(204);
+      expect((await cartOf(a.token)).lines).toEqual([]);
+    });
+
+    it('объединение: большее количество, повтор ничего не меняет, недоступные — в skipped', async () => {
+      const a = await buyer();
+      await put(a.token, phone.skuId, 1).expect(200);
+      const merge = () =>
+        http()
+          .post('/cart/merge')
+          .set('Authorization', `Bearer ${a.token}`)
+          .send({
+            lines: [
+              { skuId: phone.skuId, qty: 3 },
+              { skuId: kettle.skuId, qty: 1 },
+              { skuId: inactive, qty: 1 },
+            ],
+          });
+      const first = await merge();
+      expect(first.status).toBe(200);
+      expect(first.body.skipped).toEqual([{ skuId: inactive, reason: 'unavailable' }]);
+      expect(await quantities(a.token)).toEqual({ [phone.skuId]: 3, [kettle.skuId]: 1 });
+      await merge().expect(200);
+      expect(await quantities(a.token)).toEqual({ [phone.skuId]: 3, [kettle.skuId]: 1 });
+    });
+
+    it('предел 50 строк выдерживает гонку двух запросов', async () => {
+      const productId = newId();
+      const skuIds = Array.from({ length: 51 }, () => newId());
+      await app.get(CatalogReadModel).published(1, {
+        productId,
+        sellerId: kettle.sellerId,
+        title: 'Набор',
+        categoryPath: kettle.categoryPath,
+        skus: skuIds.map((skuId, i) => ({
+          skuId,
+          skuCode: `N-${i}`,
+          price: money(1_00),
+          active: true,
+        })),
+      });
+      const a = await buyer();
+      for (const skuId of skuIds.slice(0, 49)) await put(a.token, skuId, 1).expect(200);
+      const statuses = (
+        await Promise.all([put(a.token, skuIds[49], 1), put(a.token, skuIds[50], 1)])
+      ).map((r) => r.status);
+      expect(statuses.sort()).toEqual([200, 422]);
+      expect((await cartOf(a.token)).lines).toHaveLength(50);
+    });
+
+    it('подтверждение заказа вычитает купленное; отменённое оформление корзину не трогает', async () => {
+      const a = await buyer();
+      await put(a.token, phone.skuId, 1).expect(200);
+      await put(a.token, kettle.skuId, 3).expect(200);
+      await put(a.token, cover.skuId, 2).expect(200);
+      const service = app.get(CheckoutService);
+      const drive = (orderId: string, inputs: Parameters<CheckoutService['onSagaEvent']>[2][]) =>
+        runInNewChain(async () => {
+          for (const input of inputs) await service.onSagaEvent(orderId, newId(), input);
+        });
+
+      const outOfStock = await newOrder(a.token);
+      await drive(outOfStock, [{ type: 'stock.rejected', unavailable: [kettle.skuId] }]);
+      const cancelled = await get(a.token, `/orders/${outOfStock}`);
+      expect(cancelled.body).toMatchObject({
+        status: 'CANCELLED',
+        cancelReason: 'out_of_stock',
+        unavailableSkus: [kettle.skuId],
+      });
+      expect(await quantities(a.token)).toEqual({
+        [phone.skuId]: 1,
+        [kettle.skuId]: 3,
+        [cover.skuId]: 2,
+      });
+
+      const paid = await newOrder(a.token); // телефон 1 и чайник 1
+      const paymentId = newId();
+      await drive(paid, [
+        { type: 'stock.reserved' },
+        { type: 'payment.authorized', paymentId },
+        { type: 'stock.committed' },
+        { type: 'payment.captured', paymentId },
+      ]);
+      expect(await state(paid)).toBe('CONFIRMED');
+      expect(await quantities(a.token)).toEqual({ [kettle.skuId]: 2, [cover.skuId]: 2 });
+      expect((await get(a.token, `/orders/${paid}`)).body.unavailableSkus).toEqual([]);
     });
   });
 

@@ -26,6 +26,8 @@ const CreatePaymentBody = z.object({
   merchantReference: z.string().min(1).max(100),
   amountMinor: z.number().int().positive().refine(Number.isSafeInteger),
   currency: z.literal('UZS'),
+  /** Страница магазина, куда вернуть покупателя после оплаты (SD-07, п. 3.3). */
+  returnUrl: z.url().max(500).optional(),
 });
 
 function requireKey(key: string | undefined): string {

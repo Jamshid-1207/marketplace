@@ -96,17 +96,17 @@ model OrderLine {
 
 /// Под-заказ продавца (ADR-0005, п. 7): PENDING до подтверждения заказа
 model SubOrder {
-  subOrderId  String   @id @map("sub_order_id") @db.Uuid
-  orderId     String   @map("order_id") @db.Uuid
-  sellerId    String   @map("seller_id") @db.Uuid
-  status      String
-  amountMinor BigInt   @map("amount_minor")
+  subOrderId        String    @id @map("sub_order_id") @db.Uuid
+  orderId           String    @map("order_id") @db.Uuid
+  sellerId          String    @map("seller_id") @db.Uuid
+  status            String
+  amountMinor       BigInt    @map("amount_minor")
   /// возврат при отмене (SD-03, п. 6.2): REQUESTED, затем REFUNDED по payment.refunded
   refundStatus      String?   @map("refund_status")
   refundRequestedAt DateTime? @map("refund_requested_at") @db.Timestamptz(6)
   /// алерт «возврат не подтверждён за час» уже отправлен
   refundAlertedAt   DateTime? @map("refund_alerted_at") @db.Timestamptz(6)
-  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   order Order @relation(fields: [orderId], references: [orderId])
 
@@ -117,18 +117,20 @@ model SubOrder {
 
 /// Saga оформления (ADR-0005, п. 7; SD-02, п. 5.1)
 model CheckoutSaga {
-  orderId       String    @id @map("order_id") @db.Uuid
-  state         String
-  paymentId     String?   @map("payment_id") @db.Uuid
-  paymentUrl    String?   @map("payment_url")
-  cancelReason  String?   @map("cancel_reason")
-  deadlineAt    DateTime? @map("deadline_at") @db.Timestamptz(6)
+  orderId         String    @id @map("order_id") @db.Uuid
+  state           String
+  paymentId       String?   @map("payment_id") @db.Uuid
+  paymentUrl      String?   @map("payment_url")
+  cancelReason    String?   @map("cancel_reason")
+  /// SKU из stock.rejected и stock.commit-failed: витрина отмечает их в корзине (SD-07, п. 3.3)
+  unavailableSkus String[]  @default([]) @map("unavailable_skus") @db.Uuid
+  deadlineAt      DateTime? @map("deadline_at") @db.Timestamptz(6)
   /// aggregateVersion заказа: +1 на каждое событие заказа или под-заказа
-  version       Int       @default(0)
+  version         Int       @default(0)
   /// цепочка и трейс POST /orders: в них работает планировщик дедлайнов (SD-02, п. 7)
-  correlationId String    @map("correlation_id")
-  traceHeaders  Json      @default("{}") @map("trace_headers")
-  updatedAt     DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  correlationId   String    @map("correlation_id")
+  traceHeaders    Json      @default("{}") @map("trace_headers")
+  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   order Order @relation(fields: [orderId], references: [orderId])
 
@@ -148,4 +150,16 @@ model IdempotencyKey {
   @@id([userId, key])
   @@index([createdAt], map: "idempotency_keys_created")
   @@map("idempotency_keys")
+}
+
+/// Строка корзины покупателя (SD-07, п. 5.1): до 50 строк, количество 1–99 (CHECK в миграции)
+model CartLine {
+  buyerId   String   @map("buyer_id") @db.Uuid
+  skuId     String   @map("sku_id") @db.Uuid
+  qty       Int
+  addedAt   DateTime @default(now()) @map("added_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@id([buyerId, skuId])
+  @@map("cart_lines")
 }

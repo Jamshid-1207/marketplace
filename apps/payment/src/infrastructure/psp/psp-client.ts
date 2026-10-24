@@ -20,6 +20,11 @@ export class PspUnavailableError extends Error {
 export interface PspClientOptions {
   baseUrl: string;
   timeoutMs: number;
+  /**
+   * Куда провайдер вернёт покупателя после оплаты, `{orderId}` заменяется (SD-07, решение 7).
+   * Адрес — из конфига, а не из запроса витрины: открытого редиректа нет.
+   */
+  returnUrl?: string;
   fetch?: typeof fetch;
 }
 
@@ -52,11 +57,23 @@ export class PspHttpClient implements PspGateway {
     this.fetch = options.fetch ?? globalThis.fetch;
   }
 
-  async create({ paymentId, amount }: { paymentId: string; amount: Money }) {
+  async create({
+    paymentId,
+    orderId,
+    amount,
+  }: {
+    paymentId: string;
+    orderId: string;
+    amount: Money;
+  }) {
+    const { returnUrl } = this.options;
     const response = await this.post('/v1/payments', `${paymentId}:create`, {
       merchantReference: paymentId,
       amountMinor: amount.amountMinor,
       currency: amount.currency,
+      ...(returnUrl
+        ? { returnUrl: returnUrl.replace('{orderId}', encodeURIComponent(orderId)) }
+        : {}),
     });
     const created = CreatedPayment.safeParse(response.body);
     if (!ok(response.status) || !created.success) {

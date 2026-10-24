@@ -9,6 +9,7 @@ import type {
   PayloadOf,
   ShippingAddress,
 } from '@repo/contracts';
+import type { CartLine } from '../domain/cart';
 import type { CheckoutSaga, OrderFacts } from '../domain/checkout';
 import type { CatalogItem, PricedLine } from '../domain/order';
 
@@ -43,7 +44,36 @@ export interface SubOrderRecord {
   refundStatus: 'REQUESTED' | 'REFUNDED' | null;
 }
 
-export interface CheckoutTx {
+/** Корзина в транзакции (SD-07, п. 5). */
+export interface CartTx {
+  /**
+   * Строки корзины под `pg_advisory_xact_lock` по покупателю: две вкладки и подтверждение
+   * заказа меняют одну корзину по очереди, предел строк не превышается.
+   */
+  lockCart(buyerId: string): Promise<CartLine[]>;
+  setCartLine(buyerId: string, line: CartLine): Promise<void>;
+  removeCartLine(buyerId: string, skuId: string): Promise<void>;
+}
+
+/** Строка корзины с данными read-модели каталога. */
+export interface CartLineRow extends CartLine {
+  productId: string;
+  sellerId: string;
+  title: string;
+  unitPrice: Money;
+  /** SKU опубликован и активен. */
+  active: boolean;
+}
+
+export interface CartRepository {
+  transaction<T>(fn: (tx: CartTx) => Promise<T>): Promise<T>;
+  /** Корзина покупателя, новые строки сверху. Только его строки (ADR-0006, п. 5). */
+  view(scope: { userId: string }): Promise<CartLineRow[]>;
+  /** SKU, которые можно заказать сейчас: есть в read-модели и активны. */
+  orderable(skuIds: string[]): Promise<Set<string>>;
+}
+
+export interface CheckoutTx extends CartTx {
   /** Строка saga под `FOR UPDATE`: все переходы одного заказа идут по очереди (ADR-0005, п. 7). */
   lockSaga(orderId: string): Promise<LockedSaga | null>;
   /** Просроченная saga под `FOR UPDATE SKIP LOCKED`: занятую обработает следующий тик. */
@@ -144,6 +174,14 @@ export class UnavailableSkusError extends Error {
   constructor(readonly skuIds: string[]) {
     super(`SKU недоступны: ${skuIds.join(', ')}`);
     this.name = 'UnavailableSkusError';
+  }
+}
+
+/** В корзине уже 50 строк — `422` (SD-07, п. 5.1). */
+export class CartLimitError extends Error {
+  constructor(limit: number) {
+    super(`в корзине не больше ${limit} строк`);
+    this.name = 'CartLimitError';
   }
 }
 

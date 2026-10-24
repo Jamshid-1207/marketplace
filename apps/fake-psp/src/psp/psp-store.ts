@@ -13,6 +13,8 @@ export interface PspPayment {
   currency: string;
   status: PspStatus;
   paymentUrl: string;
+  /** Куда вернуть покупателя после оплаты; без него страница остаётся у провайдера (SD-07, п. 3.3). */
+  returnUrl: string | null;
   createdAt: number;
   expiresAt: number;
   /** Сколько раз деньги фактически списаны и отменены: тесты проверяют, что не больше одного. */
@@ -107,12 +109,18 @@ export class PspStore {
     return response;
   }
 
-  create(input: { merchantReference: string; amountMinor: number; currency: string }): PspResponse {
+  create(input: {
+    merchantReference: string;
+    amountMinor: number;
+    currency: string;
+    returnUrl?: string;
+  }): PspResponse {
     const id = newPspId('psp');
     const now = this.now();
     const payment: PspPayment = {
       id,
       ...input,
+      returnUrl: input.returnUrl ?? null,
       status: 'requires_action',
       paymentUrl: `${this.options.publicUrl}/pay/${id}`,
       createdAt: now,

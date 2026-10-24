@@ -19,6 +19,21 @@ export const ConfigSchema = z.object({
   JWKS_URL: z.url().default('http://localhost:3104/.well-known/jwks.json'),
   /** Запросов в минуту на пользователя, на анонима — на IP (SD-02, п. 3.1). */
   RATE_LIMIT_PER_MINUTE: z.coerce.number().int().positive().default(100),
+  /**
+   * Адреса прокси, от которых принимается `X-Forwarded-For` (SD-07, решение 9): в compose — адрес
+   * storefront. Иначе все гости витрины делили бы лимит одного адреса, а заголовок, присланный
+   * мимо storefront, подменял бы клиента. Формат — как у `trust proxy` Express, через запятую.
+   */
+  TRUST_PROXY: z
+    .string()
+    .optional()
+    .transform(
+      (value) =>
+        value
+          ?.split(',')
+          .map((part) => part.trim())
+          .filter(Boolean) ?? [],
+    ),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
   LOG_PRETTY: z.stringbool().default(false),
 });

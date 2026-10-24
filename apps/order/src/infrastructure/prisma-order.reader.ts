@@ -5,6 +5,7 @@ import {
   type CancelReason,
   type CheckoutState,
   type OrderView,
+  type RefundStatus,
   type ShippingAddress,
   type SubOrderStatus,
 } from '@repo/contracts';
@@ -27,6 +28,7 @@ export class PrismaOrderReader implements OrderReader {
       orderId: order.orderId,
       status: state,
       cancelReason: order.saga.cancelReason as CancelReason | null,
+      unavailableSkus: order.saga.unavailableSkus,
       // страница оплаты нужна, только пока заказ ждёт оплаты (ADR-0005, п. 9)
       paymentUrl: state === 'AWAITING_PAYMENT' ? order.saga.paymentUrl : null,
       total: money(toSafeNumber(order.totalMinor)),
@@ -35,6 +37,7 @@ export class PrismaOrderReader implements OrderReader {
         subOrderId: sub.subOrderId,
         sellerId: sub.sellerId,
         status: sub.status as SubOrderStatus,
+        refundStatus: sub.refundStatus as RefundStatus | null,
         amount: money(toSafeNumber(sub.amountMinor)),
         lines: order.lines
           .filter((line) => line.subOrderId === sub.subOrderId)

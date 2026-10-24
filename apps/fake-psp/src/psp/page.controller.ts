@@ -30,6 +30,9 @@ export class PageController {
            <form method="post" action="/pay/${escape(id)}/decline"><button>Отклонить</button></form>`
         : '';
     const declined = payment.declines > 0 ? `<p>Отклонённых попыток: ${payment.declines}</p>` : '';
+    const back = payment.returnUrl
+      ? `<p><a href="${escape(payment.returnUrl)}">Вернуться в магазин</a></p>`
+      : '';
     return `<!doctype html>
 <html lang="ru">
 <head><meta charset="utf-8"><title>fake-psp: оплата</title></head>
@@ -39,16 +42,18 @@ export class PageController {
   <p>Статус: ${STATUS_TEXT[payment.status]}</p>
   ${declined}
   ${actions}
+  ${back}
 </body>
 </html>`;
   }
 
+  /** Оплачено — покупатель возвращается в магазин, если тот передал адрес (SD-07, п. 3.3). */
   @Post(':id/authorize')
   @Redirect()
   authorize(@Param('id') id: string) {
-    this.find(id);
+    const payment = this.find(id);
     this.store.authorize(id);
-    return { url: `/pay/${id}`, statusCode: 303 };
+    return { url: payment.returnUrl ?? `/pay/${id}`, statusCode: 303 };
   }
 
   @Post(':id/decline')

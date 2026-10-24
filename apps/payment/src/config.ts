@@ -19,6 +19,11 @@ export const ConfigSchema = z.object({
   PSP_API_URL: z.url().default('http://localhost:4000'),
   /** Таймаут вызова провайдера: дольше — временная ошибка и повтор (SD-02, п. 6.2). */
   PSP_TIMEOUT_MS: z.coerce.number().int().positive().default(5_000),
+  /** Куда провайдер вернёт покупателя после оплаты: страница заказа в витрине (SD-07, п. 3.3). */
+  PAYMENT_RETURN_URL: z
+    .url()
+    .refine((url) => url.includes('{orderId}'), 'адрес возврата должен содержать {orderId}')
+    .optional(),
   /** Секрет подписи webhook, общий с провайдером (SD-02, п. 6.3). */
   PSP_WEBHOOK_SECRET: z.string().min(16),
   /** Ключи проверки JWT для кабинета и админки: до этапа 5 — gateway (SD-02, п. 3.1). */

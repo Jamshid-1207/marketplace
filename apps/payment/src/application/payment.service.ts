@@ -349,7 +349,11 @@ export class PaymentService {
 
   private async createAtProvider(payment: Payment) {
     try {
-      return await this.psp.create({ paymentId: payment.paymentId, amount: payment.amount });
+      return await this.psp.create({
+        paymentId: payment.paymentId,
+        orderId: payment.orderId,
+        amount: payment.amount,
+      });
     } catch (error) {
       if (error instanceof PspRejectedError) {
         throw new PermanentError(error.message, { cause: error });

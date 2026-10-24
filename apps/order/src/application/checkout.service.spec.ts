@@ -34,6 +34,8 @@ class InMemoryCheckout implements CheckoutRepository {
   keys = new Map<string, { requestHash: string; orderId: string; createdAt: Date }>();
   processed = new Set<string>();
   published: Published[] = [];
+  /** Корзины: покупатель → SKU → количество. */
+  carts = new Map<string, Map<string, number>>();
 
   catalogItems = new Map<string, CatalogItem>(
     DEV_CATALOG.map((sku) => [sku.skuId, { ...sku, price: money(sku.priceMinor) } as CatalogItem]),
@@ -46,6 +48,7 @@ class InMemoryCheckout implements CheckoutRepository {
       keys: this.keys,
       processed: this.processed,
       published: this.published,
+      carts: this.carts,
     });
     try {
       return await fn(this.tx());
@@ -130,8 +133,17 @@ class InMemoryCheckout implements CheckoutRepository {
     return order ? structuredClone({ saga: order.saga, facts: order.facts }) : null;
   }
 
+  private cartOf(buyerId: string): Map<string, number> {
+    if (!this.carts.has(buyerId)) this.carts.set(buyerId, new Map());
+    return this.carts.get(buyerId) as Map<string, number>;
+  }
+
   private tx(): CheckoutTx {
     return {
+      lockCart: async (buyerId) =>
+        [...this.cartOf(buyerId)].map(([skuId, qty]) => ({ skuId, qty })),
+      setCartLine: async (buyerId, line) => void this.cartOf(buyerId).set(line.skuId, line.qty),
+      removeCartLine: async (buyerId, skuId) => void this.cartOf(buyerId).delete(skuId),
       lockSaga: async (orderId) => this.locked(orderId),
       lockDueSaga: async (orderId, now) => {
         const saga = this.orders.get(orderId)?.saga;
@@ -270,6 +282,25 @@ describe('CheckoutService и SubOrderService', () => {
     expect(order.saga.version).toBe(1);
     expect(types()).toEqual(['order.created', 'ReserveStock']);
     expect(repo.published[1].payload.lines).toHaveLength(2);
+  });
+
+  it('корзина: купленное уходит при CONFIRMED, остальное остаётся; отмена её не трогает', async () => {
+    const cart = () => Object.fromEntries(repo.carts.get(buyer.userId) ?? []);
+    repo.carts.set(
+      buyer.userId,
+      new Map([
+        [phone.skuId, 1],
+        [kettle.skuId, 5],
+        [cover.skuId, 2],
+      ]),
+    );
+    const rejected = await create('01930000-0000-7000-8000-0000000000e2');
+    await event(rejected.orderId, { type: 'stock.rejected', unavailable: [kettle.skuId] });
+    expect(repo.saga(rejected.orderId).unavailableSkus).toEqual([kettle.skuId]);
+    expect(cart()).toEqual({ [phone.skuId]: 1, [kettle.skuId]: 5, [cover.skuId]: 2 });
+
+    await confirmed(); // телефон 1 и чайник 2
+    expect(cart()).toEqual({ [kettle.skuId]: 3, [cover.skuId]: 2 });
   });
 
   it('тот же Idempotency-Key — тот же заказ; другое тело — ошибка', async () => {

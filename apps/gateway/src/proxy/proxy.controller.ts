@@ -86,8 +86,15 @@ export class ProxyController {
     void this.crm(req, res, next);
   }
 
-  /** Заказы покупателя и под-заказы в кабинете продавца — в order (SD-03, п. 6.3). */
-  @All(['api/orders', 'api/orders/*path', 'api/seller/sub-orders', 'api/seller/sub-orders/*path'])
+  /** Заказы и корзина покупателя, под-заказы в кабинете продавца — в order (SD-03, п. 6.3; SD-07, п. 5.2). */
+  @All([
+    'api/orders',
+    'api/orders/*path',
+    'api/cart',
+    'api/cart/*path',
+    'api/seller/sub-orders',
+    'api/seller/sub-orders/*path',
+  ])
   orders(@Req() req: Request, @Res() res: Response, @Next() next: NextFunction): void {
     void this.order(req, res, next);
   }

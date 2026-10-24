@@ -28,7 +28,11 @@ import { PspWebhookController } from './interface/psp-webhook.controller';
       provide: PspHttpClient,
       inject: [CONFIG],
       useFactory: (config: Config) =>
-        new PspHttpClient({ baseUrl: config.PSP_API_URL, timeoutMs: config.PSP_TIMEOUT_MS }),
+        new PspHttpClient({
+          baseUrl: config.PSP_API_URL,
+          timeoutMs: config.PSP_TIMEOUT_MS,
+          returnUrl: config.PAYMENT_RETURN_URL,
+        }),
     },
     {
       provide: PaymentService,

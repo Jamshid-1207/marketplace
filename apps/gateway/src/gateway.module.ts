@@ -1,12 +1,30 @@
-import { Module, type DynamicModule } from '@nestjs/common';
+import { Inject, Injectable, Module, type DynamicModule, type OnModuleInit } from '@nestjs/common';
+import { HttpAdapterHost } from '@nestjs/core';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { AuthModule, type Claims } from '@repo/auth';
-import type { Config } from './config';
+import { CONFIG, type Config } from './config';
 import { ProxyController } from './proxy/proxy.controller';
 
 /** Ключ лимита: пользователь из проверенного токена, аноним — IP (SD-02, п. 3.1). */
 export function rateLimitKey(req: { claims?: Claims; ip?: string }): string {
   return req.claims ? `user:${req.claims.sub}` : `ip:${req.ip ?? 'unknown'}`;
+}
+
+/**
+ * `X-Forwarded-For` — только от доверенных прокси (SD-07, решение 9): тогда `req.ip` — адрес
+ * клиента витрины. Без настройки заголовок не учитывается вовсе.
+ */
+@Injectable()
+class TrustProxy implements OnModuleInit {
+  constructor(
+    private readonly adapter: HttpAdapterHost,
+    @Inject(CONFIG) private readonly config: Config,
+  ) {}
+
+  onModuleInit(): void {
+    const trusted = this.config.TRUST_PROXY;
+    this.adapter.httpAdapter.getInstance().set('trust proxy', trusted.length > 0 ? trusted : false);
+  }
 }
 
 /**
@@ -27,6 +45,7 @@ export class GatewayModule {
         }),
       ],
       controllers: [ProxyController],
+      providers: [TrustProxy],
     };
   }
 }

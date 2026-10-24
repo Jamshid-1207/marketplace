@@ -57,6 +57,7 @@ describe('OrderView', () => {
       orderId: sku,
       status: 'AWAITING_PAYMENT',
       cancelReason: null,
+      unavailableSkus: [],
       paymentUrl: null,
       total: { amountMinor: 100, currency: 'UZS' },
       shipping,

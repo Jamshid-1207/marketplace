@@ -5,6 +5,7 @@ interface DoublePayment {
   id: string;
   merchantReference: string;
   amountMinor: number;
+  returnUrl: string | null;
   status: 'requires_action' | 'authorized' | 'captured' | 'voided';
   captures: number;
   voids: number;
@@ -98,6 +99,7 @@ export class PspDouble {
         id,
         merchantReference: String(body.merchantReference),
         amountMinor: Number(body.amountMinor),
+        returnUrl: typeof body.returnUrl === 'string' ? body.returnUrl : null,
         status: 'requires_action',
         captures: 0,
         voids: 0,

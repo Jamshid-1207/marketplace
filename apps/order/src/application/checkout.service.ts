@@ -15,6 +15,7 @@ import {
   type CheckoutSaga,
 } from '../domain/checkout';
 import { priceOrder } from '../domain/order';
+import { removePurchased } from './cart.service';
 import { publishCommand, publishOrderEvent } from './publish';
 import {
   IdempotencyKeyReusedError,
@@ -207,5 +208,13 @@ export class CheckoutService {
       await publishCommand(tx, command, saga.version);
     }
     await tx.saveSaga(saga, result.subOrderStatus);
+    // корзина очищается при подтверждении, а не при оформлении: отказ банка её не теряет (SD-07, решение 5)
+    if (result.subOrderStatus === 'CONFIRMED') {
+      await removePurchased(
+        tx,
+        facts.buyerId,
+        facts.subOrders.flatMap((sub) => sub.lines.map(({ skuId, qty }) => ({ skuId, qty }))),
+      );
+    }
   }
 }
