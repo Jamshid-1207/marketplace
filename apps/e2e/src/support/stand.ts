@@ -74,8 +74,12 @@ function isStaleConnection(error: unknown): boolean {
  * и следующий запрос может попасть на уже закрытый сокет. Такой запрос до сервера не дошёл —
  * повтор безопасен. Закрытых сокетов в пуле может быть несколько (параллельные запросы держат
  * несколько соединений), поэтому повторов — до `STALE_RETRIES`; любая другая ошибка пробрасывается.
+ *
+ * Перед повтором — пауза: `compose()` блокирует event loop на время `docker compose stop`, и
+ * сразу после него пул ещё не обработал закрытие сокетов — повтор без паузы берёт тот же сокет.
  */
 const STALE_RETRIES = 5;
+const STALE_PAUSE_MS = 200;
 
 export async function standFetch(url: string, init: RequestInit = {}): Promise<Response> {
   for (let retry = 0; ; retry++) {
@@ -83,6 +87,7 @@ export async function standFetch(url: string, init: RequestInit = {}): Promise<R
       return await fetch(url, { ...init, signal: AbortSignal.timeout(15_000) });
     } catch (error) {
       if (!isStaleConnection(error) || retry >= STALE_RETRIES) throw error;
+      await new Promise((resolve) => setTimeout(resolve, STALE_PAUSE_MS));
     }
   }
 }
