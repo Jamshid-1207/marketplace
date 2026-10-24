@@ -642,7 +642,8 @@ services:
         - CMD
         - wget
         - -qO-
-        - http://localhost:3001/health/ready
+        # Next слушает IPv4 (HOSTNAME=0.0.0.0), а localhost в контейнере — сначала ::1
+        - http://127.0.0.1:3001/health/ready
       interval: 5s
       timeout: 3s
       retries: 30
