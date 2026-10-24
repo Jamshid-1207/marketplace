@@ -50,12 +50,13 @@ test.describe.serial('витрина в браузере', () => {
     await page.getByRole('searchbox', { name: 'Найти товар' }).fill('чайник');
     await page.getByRole('button', { name: 'Найти' }).click();
     await expect(page.getByRole('heading', { name: 'Найдено по запросу «чайник»' })).toBeVisible();
-    await expect(page.getByRole('link', { name: /Чайник электрический/ })).toBeVisible();
+    // точное название: товары других сценариев называются «Чайник электрический <метка>»
+    await expect(page.getByText(kettle.title, { exact: true })).toBeVisible();
 
     await page.goto('/');
     await page.getByRole('link', { name: 'Телефоны' }).click();
     await expect(page.getByRole('link', { name: /Смартфон, 8\/256 ГБ/ })).toBeVisible();
-    await expect(page.getByRole('link', { name: /Чайник электрический/ })).toHaveCount(0);
+    await expect(page.getByText(kettle.title, { exact: true })).toHaveCount(0);
     await expect(page.getByText('Снят с продажи')).toHaveCount(0);
 
     await page.getByRole('link', { name: /Смартфон, 8\/256 ГБ/ }).click();
