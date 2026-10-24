@@ -1,35 +1,38 @@
 import { Controller, Get, NotFoundException, Param, ParseUUIDPipe, Query } from '@nestjs/common';
 import { Public } from '@repo/auth';
-import { z } from 'zod';
+import {
+  SearchQuery,
+  SellerNamesQuery,
+  SkuLookupQuery,
+  type CategoryTree,
+  type ProductCard,
+  type SearchResponse,
+  type SellerNamesResponse,
+  type SkuLookupResponse,
+} from '@repo/contracts';
 import { categoryTree } from '../application/categories.service';
 import { PrismaCatalogReader } from '../infrastructure/prisma-catalog.reader';
 import { http, parse } from './http';
 
-const price = z.coerce.number().int().min(0).refine(Number.isSafeInteger);
-const SearchQuery = z.object({
-  q: z.string().trim().max(200).optional(),
-  categoryId: z.uuid().optional(),
-  minPrice: price.optional(),
-  maxPrice: price.optional(),
-  cursor: z.string().max(200).optional(),
-  limit: z.coerce.number().int().min(1).max(100).default(20),
-});
-
-/** Витрина каталога (SD-05, п. 6.4): публична, только опубликованные товары активных магазинов. */
+/**
+ * Витрина каталога (SD-05, п. 6.4; SD-07, п. 4): публична, только опубликованные товары
+ * активных магазинов. Запросы и ответы — схемы `libs/contracts`, по ним их читает storefront.
+ */
 @Controller('catalog')
 export class CatalogController {
   constructor(private readonly reader: PrismaCatalogReader) {}
 
   @Public()
   @Get('search')
-  search(@Query() query: unknown) {
-    const { q, categoryId, minPrice, maxPrice, cursor, limit } = parse(SearchQuery, query);
+  search(@Query() query: unknown): Promise<SearchResponse> {
+    const { q, categoryId, minPrice, maxPrice, inStock, cursor, limit } = parse(SearchQuery, query);
     return http(() =>
       this.reader.search({
         q: q || undefined,
         categoryId,
         minPriceMinor: minPrice,
         maxPriceMinor: maxPrice,
+        inStock,
         cursor,
         limit,
       }),
@@ -38,7 +41,7 @@ export class CatalogController {
 
   @Public()
   @Get('products/:id')
-  async product(@Param('id', new ParseUUIDPipe()) productId: string) {
+  async product(@Param('id', new ParseUUIDPipe()) productId: string): Promise<ProductCard> {
     const card = await this.reader.card(productId);
     if (!card) throw new NotFoundException('товар не найден');
     return card;
@@ -46,7 +49,21 @@ export class CatalogController {
 
   @Public()
   @Get('categories')
-  async categories() {
+  async categories(): Promise<CategoryTree> {
     return categoryTree(await this.reader.categories());
+  }
+
+  /** Строки корзины (SD-07, п. 5.3): SKU, которых нет в ответе, заказать нельзя. */
+  @Public()
+  @Get('skus')
+  skus(@Query() query: unknown): Promise<SkuLookupResponse> {
+    return this.reader.skus(parse(SkuLookupQuery, query).ids);
+  }
+
+  /** Названия магазинов для «Моих заказов» (SD-07, п. 3.2). */
+  @Public()
+  @Get('sellers')
+  sellers(@Query() query: unknown): Promise<SellerNamesResponse> {
+    return this.reader.sellerNames(parse(SellerNamesQuery, query).ids);
   }
 }

@@ -13,6 +13,7 @@ import { PermanentError } from '@repo/kafka';
 import { runInNewChain } from '@repo/observability';
 import { lowStockCheck, planReservation } from '../domain/reservation';
 import type { Log, ReservationLine, ReservationOrder, StockRepository, StockTx } from './ports';
+import { syncLevels } from './stock-levels';
 
 export interface StockSettings {
   reserveTtlMs: number;
@@ -62,7 +63,7 @@ export class StockService {
           order.orderId,
           plan.allocations.map((a) => ({ ...a, status: 'RESERVED', expiresAt })),
         );
-        await this.checkLow(
+        await this.stockChanged(
           tx,
           plan.allocations.map((a) => a.skuId),
         );
@@ -95,7 +96,7 @@ export class StockService {
           line.warehouseId = allocation.warehouseId;
           line.status = 'RESERVED';
         }
-        await this.checkLow(
+        await this.stockChanged(
           tx,
           lost.map((l) => l.skuId),
         );
@@ -199,6 +200,11 @@ export class StockService {
       line.expiresAt = null;
     }
     await tx.saveLines(order.orderId, lines);
+    // снятый резерв мог вернуть SKU в наличие; порог stock.low при росте остатка не проверяется
+    await syncLevels(
+      tx,
+      releasing.map((l) => l.skuId),
+    );
   }
 
   private answerReserve(tx: StockTx, order: ReservationOrder): Promise<void> {
@@ -208,6 +214,15 @@ export class StockService {
           orderId: order.orderId,
           unavailable: order.unavailable,
         });
+  }
+
+  /**
+   * Свободный остаток SKU изменился: порог `stock.low` и наличие на витрине (SD-07, п. 6).
+   * Отгрузка сюда не попадает: она уменьшает и остаток, и резерв, свободное не меняется.
+   */
+  async stockChanged(tx: StockTx, skuIds: string[]): Promise<void> {
+    await this.checkLow(tx, skuIds);
+    await syncLevels(tx, skuIds);
   }
 
   /** `stock.low` для SKU, чей свободный остаток мог опуститься до порога (SD-03, п. 5.5). */

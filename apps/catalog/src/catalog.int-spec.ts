@@ -11,6 +11,7 @@ import { loadConfig } from './config';
 import type { PrismaClient } from './generated/prisma/client';
 import { PrismaService } from './infrastructure/prisma.service';
 import { seedCatalog } from './infrastructure/seed-catalog';
+import { StockReadModel } from './infrastructure/stock-read-model';
 
 /** catalog через HTTP и Postgres (SD-05, п. 8). Каждый тест заводит свой магазин и товары. */
 describe('catalog: продавцы, товары, поиск (интеграция)', () => {
@@ -25,7 +26,11 @@ describe('catalog: продавцы, товары, поиск (интеграц�
     // JWKS, как его отдаёт auth (SD-05, п. 5.2)
     jwks = createServer((_, res) => res.end(JSON.stringify(issuer.jwks())));
     await new Promise<void>((resolve) => jwks.listen(0, resolve));
-    await createTopics({ topic: 'catalog.events' }, { topic: 'catalog-service.dlq' });
+    await createTopics(
+      { topic: 'catalog.events' },
+      { topic: 'erp.events' },
+      { topic: 'catalog-service.dlq' },
+    );
     const config = loadConfig({
       DATABASE_URL: testDatabaseUrl(),
       KAFKA_BROKERS: testBrokers().join(','),
@@ -89,12 +94,19 @@ describe('catalog: продавцы, товары, поиск (интеграц�
   /** Товар с SKU: создан, отправлен на модерацию, одобрен админом. */
   async function product(
     seller: string,
-    input: { title: string; description?: string; categoryId: string; prices?: number[] },
+    input: {
+      title: string;
+      description?: string;
+      categoryId: string;
+      prices?: number[];
+      images?: string[];
+    },
   ) {
     const created = await as(seller).post('/seller/products', {
       title: input.title,
       description: input.description ?? '',
       categoryId: input.categoryId,
+      images: input.images ?? [],
     });
     expect(created.status).toBe(201);
     const productId = created.body.productId as string;
@@ -232,6 +244,119 @@ describe('catalog: продавцы, товары, поиск (интеграц�
     expect(ids(await search({ q: tag }))).toEqual([]);
     expect((await api().get(`/catalog/products/${live.productId}`)).status).toBe(404);
     expect(await outboxTypes(live.productId)).toEqual(['product.published', 'product.unpublished']);
+  });
+
+  it('витрина: магазин, первое изображение, наличие SKU из erp, фильтр inStock (SD-07, п. 6)', async () => {
+    const { root } = await categories();
+    const { sellerId, seller } = await shop();
+    const tag = newId().slice(-6);
+    const live = await product(seller, {
+      title: `Термос ${tag}`,
+      categoryId: root,
+      prices: [100_00, 200_00],
+      images: ['https://img.test/a.jpg', 'https://img.test/b.jpg'],
+    });
+    const [first, second] = live.skus.map((s) => s.skuId);
+    const hits = async (query: Record<string, string> = {}) =>
+      (
+        await api()
+          .get('/catalog/search')
+          .query({ q: tag, ...query })
+          .expect(200)
+      ).body.items;
+
+    // erp ещё не сообщал об остатке — товара нет
+    expect(await hits()).toEqual([
+      expect.objectContaining({
+        productId: live.productId,
+        sellerName: expect.stringMatching(/^Магазин /),
+        image: 'https://img.test/a.jpg',
+        inStock: false,
+      }),
+    ]);
+    expect(await hits({ inStock: 'true' })).toEqual([]);
+
+    const stock = app.get(StockReadModel);
+    expect(await stock.levelChanged(1, { skuId: second, sellerId, inStock: true })).toBe(true);
+    expect(await hits({ inStock: 'true' })).toMatchObject([{ productId: live.productId }]);
+    const card = await api().get(`/catalog/products/${live.productId}`).expect(200);
+    expect(card.body.sellerName).toMatch(/^Магазин /);
+    expect(
+      card.body.skus.map((s: { skuId: string; inStock: boolean }) => [s.skuId, s.inStock]).sort(),
+    ).toEqual(
+      [
+        [first, false],
+        [second, true],
+      ].sort(),
+    );
+
+    // повтор и опоздавшее событие ничего не меняют (ADR-0004, п. 3, правило 5)
+    expect(await stock.levelChanged(1, { skuId: second, sellerId, inStock: false })).toBe(false);
+    expect(await stock.levelChanged(3, { skuId: second, sellerId, inStock: false })).toBe(true);
+    expect(await stock.levelChanged(2, { skuId: second, sellerId, inStock: true })).toBe(false);
+    expect(await hits({ inStock: 'true' })).toEqual([]);
+
+    // наличие хранится отдельно от товара и переживает повторную модерацию
+    await stock.levelChanged(4, { skuId: second, sellerId, inStock: true });
+    await as(seller)
+      .patch(`/seller/products/${live.productId}`, { title: `Термос ${tag} 2` })
+      .expect(200);
+    await as(seller).post(`/seller/products/${live.productId}/submit`).expect(200);
+    await as(admin).post(`/admin/products/${live.productId}/approve`).expect(200);
+    expect(await hits({ inStock: 'true' })).toMatchObject([{ productId: live.productId }]);
+  });
+
+  it('/catalog/skus — только то, что можно заказать; /catalog/sellers — магазины с заказами', async () => {
+    const { root } = await categories();
+    const a = await shop();
+    const b = await shop();
+    const pending = await shop(false);
+    const tag = newId().slice(-6);
+    const live = await product(a.seller, {
+      title: `Лампа ${tag}`,
+      categoryId: root,
+      prices: [10_00, 20_00],
+      images: ['https://img.test/lamp.jpg'],
+    });
+    const [on, off] = live.skus.map((s) => s.skuId);
+    await as(a.seller)
+      .patch(`/seller/products/${live.productId}/skus/${off}`, { active: false })
+      .expect(200);
+    const blockedProduct = await product(b.seller, { title: `Шкаф ${tag}`, categoryId: root });
+    await as(admin).post(`/admin/sellers/${b.sellerId}/block`, { reason: 'проверка' }).expect(200);
+
+    const lookup = await api()
+      .get('/catalog/skus')
+      .query({ ids: [on, off, blockedProduct.skus[0].skuId, newId()].join(',') })
+      .expect(200);
+    expect(lookup.body).toEqual({
+      items: [
+        {
+          skuId: on,
+          productId: live.productId,
+          sellerId: a.sellerId,
+          sellerName: expect.stringMatching(/^Магазин /),
+          title: `Лампа ${tag}`,
+          attributes: {},
+          priceMinor: expect.any(Number),
+          image: 'https://img.test/lamp.jpg',
+          inStock: false,
+        },
+      ],
+    });
+
+    const names = await api()
+      .get('/catalog/sellers')
+      .query({ ids: [a.sellerId, b.sellerId, pending.sellerId].join(',') })
+      .expect(200);
+    expect(names.body.items.map((s: { sellerId: string }) => s.sellerId).sort()).toEqual(
+      [a.sellerId, b.sellerId].sort(),
+    );
+
+    expect((await api().get('/catalog/skus').query({ ids: 'garbage' })).status).toBe(400);
+    expect((await api().get('/catalog/skus')).status).toBe(400);
+    const tooMany = Array.from({ length: 51 }, () => newId()).join(',');
+    expect((await api().get('/catalog/sellers').query({ ids: tooMany })).status).toBe(400);
   });
 
   it('блокировка магазина: товары сняты (seller_blocked), карточки нет, кабинет — 403', async () => {

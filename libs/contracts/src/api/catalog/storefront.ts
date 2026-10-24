@@ -93,7 +93,10 @@ const idList = (max: number) =>
 /** Сколько id принимают `/catalog/skus` и `/catalog/sellers`: строк в корзине не больше 50. */
 export const LOOKUP_MAX_IDS = 50;
 
-/** `GET /catalog/skus?ids=…`: данные строк корзины. Неопубликованных SKU в ответе нет. */
+/**
+ * `GET /catalog/skus?ids=…`: данные строк корзины. В ответе только SKU, которые можно заказать:
+ * активный SKU опубликованного товара активного магазина.
+ */
 export const SkuLookupQuery = z.object({ ids: idList(LOOKUP_MAX_IDS) });
 export type SkuLookupQuery = z.infer<typeof SkuLookupQuery>;
 

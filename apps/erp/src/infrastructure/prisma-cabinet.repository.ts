@@ -36,19 +36,6 @@ export class PrismaCabinetRepository implements CabinetRepository {
     return warehouseView(row);
   }
 
-  async updateWarehouse(
-    scope: SellerScope,
-    warehouseId: string,
-    changes: Partial<Omit<WarehouseView, 'warehouseId'>>,
-  ): Promise<WarehouseView | null> {
-    const { count } = await this.prisma.warehouse.updateMany({
-      where: { warehouseId, sellerId: scope.sellerId },
-      data: changes,
-    });
-    if (count === 0) return null;
-    return warehouseView(await this.prisma.warehouse.findUniqueOrThrow({ where: { warehouseId } }));
-  }
-
   async stock(scope: SellerScope): Promise<StockView[]> {
     const rows = await this.prisma.stock.findMany({
       where: { sellerId: scope.sellerId },

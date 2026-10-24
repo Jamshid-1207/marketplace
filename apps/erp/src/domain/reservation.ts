@@ -55,6 +55,22 @@ export function planReservation(
   return unavailable.length > 0 ? { ok: false, unavailable } : { ok: true, allocations };
 }
 
+/**
+ * Есть в наличии (SD-07, п. 6): хотя бы одну штуку можно зарезервировать — на каком-нибудь
+ * активном складе продавца она свободна. Сумма по складам тут не годится: свободное на
+ * выключенном складе не зарезервировать.
+ */
+export const inStock = (rows: readonly Pick<StockRow, 'active' | 'onHand' | 'reserved'>[]) =>
+  rows.some((row) => row.active && available(row) > 0);
+
+/** Событие о наличии — только когда «есть / нет» поменялось или о SKU ещё не сообщали. */
+export function levelChanged(
+  published: { inStock: boolean; version: number },
+  nowInStock: boolean,
+): boolean {
+  return published.version === 0 || published.inStock !== nowInStock;
+}
+
 /** Порог низкого остатка (SD-03, п. 5.5): событие один раз на пересечение сверху вниз. */
 export function lowStockCheck(
   availableTotal: number,

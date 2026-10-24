@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import {
   toSafeNumber,
   type AggregateRef,
@@ -11,12 +11,18 @@ import type {
   ReservationLine,
   ReservationOrder,
   Sale,
+  SkuLevel,
   StockRepository,
   StockTx,
   Threshold,
+  WarehouseRow,
 } from '../application/ports';
 import type { ReservationStatus, StockRow } from '../domain/reservation';
-import type { Prisma, ReservationOrder as OrderRow } from '../generated/prisma/client';
+import type {
+  Prisma,
+  PrismaClient,
+  ReservationOrder as OrderRow,
+} from '../generated/prisma/client';
 import { PrismaService } from './prisma.service';
 
 const toOrder = (row: OrderRow): ReservationOrder => ({
@@ -161,6 +167,61 @@ class PrismaStockTx implements StockTx {
     });
   }
 
+  async lockLevel(skuId: string): Promise<SkuLevel | null> {
+    // строка появляется вместе с первым остатком; продавец SKU — из строк остатка
+    await this.tx.$executeRaw`
+      INSERT INTO sku_levels (sku_id, seller_id, in_stock, version)
+      SELECT sku_id, seller_id, false, 0 FROM stock WHERE sku_id = ${skuId}::uuid LIMIT 1
+      ON CONFLICT (sku_id) DO NOTHING`;
+    const rows = await this.tx.$queryRaw<SkuLevel[]>`
+      SELECT sku_id AS "skuId", seller_id AS "sellerId", in_stock AS "inStock", version
+      FROM sku_levels WHERE sku_id = ${skuId}::uuid FOR UPDATE`;
+    return rows[0] ?? null;
+  }
+
+  async saveLevel(level: SkuLevel): Promise<void> {
+    await this.tx.skuLevel.update({
+      where: { skuId: level.skuId },
+      data: { inStock: level.inStock, version: level.version },
+    });
+  }
+
+  stockRows(skuId: string): Promise<StockRow[]> {
+    return this.tx.$queryRaw<StockRow[]>`
+      SELECT s.warehouse_id AS "warehouseId", s.sku_id AS "skuId", s.seller_id AS "sellerId",
+             w.priority, w.active, s.on_hand AS "onHand", s.reserved
+      FROM stock s JOIN warehouses w ON w.warehouse_id = s.warehouse_id
+      WHERE s.sku_id = ${skuId}::uuid`;
+  }
+
+  async warehouseSkus(warehouseId: string): Promise<string[]> {
+    const rows = await this.tx.stock.findMany({
+      where: { warehouseId },
+      select: { skuId: true },
+      orderBy: { skuId: 'asc' },
+    });
+    return rows.map((row) => row.skuId);
+  }
+
+  async updateWarehouse(
+    sellerId: string,
+    warehouseId: string,
+    changes: { name?: string; priority?: number; active?: boolean },
+  ): Promise<WarehouseRow | null> {
+    const { count } = await this.tx.warehouse.updateMany({
+      where: { warehouseId, sellerId },
+      data: changes,
+    });
+    if (count === 0) return null;
+    const row = await this.tx.warehouse.findUniqueOrThrow({ where: { warehouseId } });
+    return {
+      warehouseId: row.warehouseId,
+      name: row.name,
+      priority: row.priority,
+      active: row.active,
+    };
+  }
+
   async insertSales(sales: Sale[]): Promise<void> {
     await this.tx.sale.createMany({
       data: sales.map((sale) => ({
@@ -194,7 +255,8 @@ class PrismaStockTx implements StockTx {
 
 @Injectable()
 export class PrismaStockRepository implements StockRepository {
-  constructor(private readonly prisma: PrismaService) {}
+  // тип — клиент, а не сервис Nest: так репозиторий работает и в `sync-levels` вне приложения
+  constructor(@Inject(PrismaService) private readonly prisma: PrismaClient) {}
 
   transaction<T>(fn: (tx: StockTx) => Promise<T>): Promise<T> {
     return this.prisma.$transaction((tx) => fn(new PrismaStockTx(tx)));
@@ -208,5 +270,16 @@ export class PrismaStockRepository implements StockRepository {
       take: limit,
     });
     return rows.map((row) => row.orderId);
+  }
+
+  async stockedSkus(after: string | null, limit: number): Promise<string[]> {
+    const rows = await this.prisma.stock.findMany({
+      where: after ? { skuId: { gt: after } } : {},
+      distinct: ['skuId'],
+      select: { skuId: true },
+      orderBy: { skuId: 'asc' },
+      take: limit,
+    });
+    return rows.map((row) => row.skuId);
   }
 }

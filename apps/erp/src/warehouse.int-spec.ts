@@ -10,9 +10,11 @@ import type { AddressInfo } from 'node:net';
 import request from 'supertest';
 import { AppModule } from './app.module';
 import { OrderEventsService } from './application/order-events.service';
+import { syncAllLevels } from './application/stock-levels';
 import { StockService } from './application/stock.service';
 import { loadConfig } from './config';
 import { PrismaService } from './infrastructure/prisma.service';
+import { PrismaStockRepository } from './infrastructure/prisma-stock.repository';
 import { seedStock } from './infrastructure/seed-stock';
 
 /** Склад через базу, Kafka и HTTP (SD-03, п. 9). Каждый тест заводит свои SKU и склады. */
@@ -213,7 +215,85 @@ describe('erp: склад (интеграция)', () => {
     await reserve(newId(), s, 1); // 4 — выше порога
     await reserve(newId(), s, 1); // 3 — порог
     await reserve(newId(), s, 1); // 2 — уже сообщили
-    expect(await answers(s.skuId)).toEqual(['stock.low']);
+    // у stock.level-changed тот же ключ — SKU, но он о другом
+    expect((await answers(s.skuId)).filter((type) => type === 'stock.low')).toEqual(['stock.low']);
+  });
+
+  /** События наличия SKU по порядку: `[aggregateVersion, inStock]` (SD-07, п. 6). */
+  const levelEvents = async (skuId: string) =>
+    (await prisma.outbox.findMany({ where: { messageKey: skuId }, orderBy: { id: 'asc' } }))
+      .map(
+        (row) =>
+          row.payload as {
+            type: string;
+            aggregateVersion: number;
+            payload: { sellerId: string; inStock: boolean };
+          },
+      )
+      .filter((envelope) => envelope.type === 'stock.level-changed')
+      .map((envelope) => [envelope.aggregateVersion, envelope.payload.inStock]);
+
+  it('stock.level-changed — только когда «есть / нет» меняется: резерв, TTL, снятие резерва', async () => {
+    const s = await shop([{ priority: 1, onHand: 2 }]);
+    const [first, second] = [newId(), newId()];
+    await reserve(first, s, 1); // 1 свободна: первое событие — «есть»
+    await reserve(second, s, 1); // 0 — «нет»
+    await reserve(newId(), s, 1); // отказ: остаток не менялся
+    expect(await levelEvents(s.skuId)).toEqual([
+      [1, true],
+      [2, false],
+    ]);
+
+    await runInNewChain(() => stock.release({ orderId: first })); // снова «есть»
+    await runInNewChain(() => stock.release({ orderId: first })); // повтор команды ничего не меняет
+    expect(await levelEvents(s.skuId)).toEqual([
+      [1, true],
+      [2, false],
+      [3, true],
+    ]);
+    const [envelope] = await prisma.outbox.findMany({
+      where: { messageKey: s.skuId },
+      orderBy: { id: 'asc' },
+    });
+    expect((envelope.payload as { payload: object }).payload).toEqual({
+      skuId: s.skuId,
+      sellerId: s.sellerId,
+      inStock: true,
+    });
+  });
+
+  it('свободно только на выключенном складе — товара нет', async () => {
+    const s = await shop([
+      { priority: 1, onHand: 1 },
+      { priority: 2, onHand: 5 },
+    ]);
+    await prisma.warehouse.update({
+      where: { warehouseId: s.warehouseIds[1] },
+      data: { active: false },
+    });
+    await reserve(newId(), s, 1);
+    expect(await levelEvents(s.skuId)).toEqual([[1, false]]);
+  });
+
+  it('sync-levels: наличие для остатков без событий; повторный запуск ничего не публикует', async () => {
+    const inStockShop = await shop([{ priority: 1, onHand: 3 }]);
+    const emptyShop = await shop([{ priority: 1, onHand: 0 }]);
+    const repository = app.get(PrismaStockRepository);
+    const log = { info: jest.fn(), warn: jest.fn(), error: jest.fn() };
+    await syncAllLevels(repository, log);
+    expect(await levelEvents(inStockShop.skuId)).toEqual([[1, true]]);
+    expect(await levelEvents(emptyShop.skuId)).toEqual([[1, false]]);
+
+    await syncAllLevels(repository, log);
+    expect(await levelEvents(inStockShop.skuId)).toEqual([[1, true]]);
+    expect(
+      await prisma.skuLevel.findUniqueOrThrow({ where: { skuId: inStockShop.skuId } }),
+    ).toEqual({
+      skuId: inStockShop.skuId,
+      sellerId: inStockShop.sellerId,
+      inStock: true,
+      version: 1,
+    });
   });
 
   it('реестр продаж: order.confirmed — продажи по под-заказам, sub-order.cancelled — сторно', async () => {
@@ -274,6 +354,36 @@ describe('erp: склад (интеграция)', () => {
         .expect(200);
       const stockView = await http().get('/seller/stock').set('Authorization', owner).expect(200);
       expect(stockView.body.stock).toHaveLength(1);
+    });
+
+    it('наличие на витрине: обнулить остаток, вернуть, выключить и включить склад (SD-07, п. 6)', async () => {
+      const s = await shop([{ priority: 1, onHand: 2 }]);
+      const owner = `Bearer ${await token(s.sellerId)}`;
+      const adjust = (delta: number) =>
+        http()
+          .post('/seller/stock/adjustments')
+          .set('Authorization', owner)
+          .send({ warehouseId: s.warehouseIds[0], skuId: s.skuId, delta, reason: 'проверка' })
+          .expect(201);
+      const toggle = (active: boolean) =>
+        http()
+          .patch(`/seller/warehouses/${s.warehouseIds[0]}`)
+          .set('Authorization', owner)
+          .send({ active })
+          .expect(200);
+
+      await adjust(-2); // первое событие — «нет»
+      await adjust(3); // «есть»
+      await adjust(1); // всё ещё «есть» — события нет
+      await toggle(false); // «нет»
+      await toggle(false); // повтор — события нет
+      await toggle(true); // «есть»
+      expect(await levelEvents(s.skuId)).toEqual([
+        [1, false],
+        [2, true],
+        [3, false],
+        [4, true],
+      ]);
     });
 
     it('чужой склад и чужой SKU — 404; сотрудник без права warehouse — 403', async () => {

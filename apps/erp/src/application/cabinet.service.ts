@@ -1,4 +1,5 @@
 import type { StockRepository } from './ports';
+import { syncLevels } from './stock-levels';
 import type { StockService } from './stock.service';
 
 /** Область продавца из токена (ADR-0006, п. 5): каждый запрос кабинета ограничен ею. */
@@ -34,11 +35,6 @@ export interface CabinetRepository {
     scope: SellerScope,
     warehouse: { name: string; priority: number },
   ): Promise<WarehouseView>;
-  updateWarehouse(
-    scope: SellerScope,
-    warehouseId: string,
-    changes: Partial<Omit<WarehouseView, 'warehouseId'>>,
-  ): Promise<WarehouseView | null>;
   stock(scope: SellerScope): Promise<StockView[]>;
   thresholds(scope: SellerScope): Promise<ThresholdView[]>;
   ownsWarehouse(scope: SellerScope, warehouseId: string): Promise<boolean>;
@@ -81,12 +77,22 @@ export class CabinetService {
     return this.cabinet.createWarehouse(scope, warehouse);
   }
 
+  /**
+   * Включение и выключение склада меняет, что можно зарезервировать: наличие его SKU
+   * пересчитывается в той же транзакции (SD-07, п. 6).
+   */
   async updateWarehouse(
     scope: SellerScope,
     warehouseId: string,
     changes: Partial<Omit<WarehouseView, 'warehouseId'>>,
-  ) {
-    const updated = await this.cabinet.updateWarehouse(scope, warehouseId, changes);
+  ): Promise<WarehouseView> {
+    const updated = await this.stock.transaction(async (tx) => {
+      const warehouse = await tx.updateWarehouse(scope.sellerId, warehouseId, changes);
+      if (warehouse && changes.active !== undefined) {
+        await syncLevels(tx, await tx.warehouseSkus(warehouseId));
+      }
+      return warehouse;
+    });
     if (!updated) throw new NotFoundError('склад');
     return updated;
   }
@@ -114,7 +120,7 @@ export class CabinetService {
         throw new ConflictError(`остаток ${onHand} меньше зарезервированного ${reserved}`);
       }
       await tx.setOnHand(scope.sellerId, adjustment.warehouseId, adjustment.skuId, onHand);
-      await this.stockService.checkLow(tx, [adjustment.skuId]);
+      await this.stockService.stockChanged(tx, [adjustment.skuId]);
       return {
         warehouseId: adjustment.warehouseId,
         skuId: adjustment.skuId,

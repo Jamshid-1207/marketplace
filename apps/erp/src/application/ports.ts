@@ -22,6 +22,14 @@ export interface Threshold {
   version: number;
 }
 
+/** Последнее опубликованное наличие SKU (SD-07, п. 6); `version` 0 — ещё не публиковали. */
+export interface SkuLevel {
+  skuId: string;
+  sellerId: string;
+  inStock: boolean;
+  version: number;
+}
+
 export interface Sale {
   subOrderId: string;
   orderId: string;
@@ -54,6 +62,22 @@ export interface StockTx {
   availableTotal(skuId: string): Promise<number>;
   lockThreshold(skuId: string): Promise<Threshold | null>;
   saveThreshold(threshold: Threshold): Promise<void>;
+  /**
+   * Строка наличия SKU под `FOR UPDATE`; если её нет, а остаток есть — создаётся с версией 0.
+   * Остатка нет ни на одном складе — `null`: витрина и так считает, что товара нет.
+   */
+  lockLevel(skuId: string): Promise<SkuLevel | null>;
+  saveLevel(level: SkuLevel): Promise<void>;
+  /** Строки остатков SKU вместе со складами — без блокировки, как они есть сейчас. */
+  stockRows(skuId: string): Promise<StockRow[]>;
+  /** SKU, у которых есть строка остатка на этом складе. */
+  warehouseSkus(warehouseId: string): Promise<string[]>;
+  /** Изменение склада продавца; чужой или несуществующий — `null`. */
+  updateWarehouse(
+    sellerId: string,
+    warehouseId: string,
+    changes: { name?: string; priority?: number; active?: boolean },
+  ): Promise<WarehouseRow | null>;
   insertSales(sales: Sale[]): Promise<void>;
   reverseSale(subOrderId: string, at: Date): Promise<void>;
   publish<D extends AnyMessageDefinition>(
@@ -68,6 +92,15 @@ export interface StockRepository {
   transaction<T>(fn: (tx: StockTx) => Promise<T>): Promise<T>;
   /** Заказы с истёкшими незакреплёнными резервами, без блокировки. */
   expiredOrders(now: Date, limit: number): Promise<string[]>;
+  /** SKU с остатком на складах, по порядку id, после `after`: для `sync-levels`. */
+  stockedSkus(after: string | null, limit: number): Promise<string[]>;
+}
+
+export interface WarehouseRow {
+  warehouseId: string;
+  name: string;
+  priority: number;
+  active: boolean;
 }
 
 export interface Log {

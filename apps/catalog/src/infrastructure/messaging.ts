@@ -67,6 +67,8 @@ export const messagingProviders: Provider[] = [
         dlq: publisher,
         logger: logger(log, 'consumer'),
         fromBeginning: config.KAFKA_FROM_BEGINNING,
+        // наличие на витрине: события erp, опубликованные до первого запуска группы (SD-07, п. 6)
+        fromBeginningTopics: ['erp.events'],
       }),
   },
 ];

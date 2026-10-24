@@ -1,4 +1,13 @@
-import type { AggregateRef, AnyMessageDefinition, PayloadOf } from '@repo/contracts';
+import type {
+  AggregateRef,
+  AnyMessageDefinition,
+  CategoryNode,
+  PayloadOf,
+  ProductCard,
+  SearchResponse,
+  SellerNamesResponse,
+  SkuLookupResponse,
+} from '@repo/contracts';
 import type { Product, ProductStatus } from '../domain/product';
 import type { Seller, SellerStatus } from '../domain/seller';
 
@@ -42,45 +51,24 @@ export interface SearchParams {
   categoryId?: string;
   minPriceMinor?: number;
   maxPriceMinor?: number;
+  /** Только товары, у которых есть активный SKU в наличии (SD-07, п. 6). */
+  inStock?: boolean;
   cursor?: string;
   limit: number;
 }
 
-export interface ProductCard {
-  productId: string;
-  sellerId: string;
-  title: string;
-  description: string;
-  categoryPath: string[];
-  images: string[];
-  skus: {
-    skuId: string;
-    skuCode: string;
-    attributes: Record<string, string>;
-    priceMinor: number;
-  }[];
-}
-
-export interface SearchHit {
-  productId: string;
-  sellerId: string;
-  title: string;
-  categoryId: string;
-  /** Самая низкая цена среди активных SKU. */
-  minPriceMinor: number;
-}
-
-export interface CategoryNode {
-  categoryId: string;
-  name: string;
-  children: CategoryNode[];
-}
+// ответы витрины — схемы `libs/contracts` (SD-07, п. 4): по ним их разбирает storefront
+export type { CategoryNode, ProductCard };
 
 /** Чтение каталога вне транзакций use case'ов. */
 export interface CatalogReader {
-  search(params: SearchParams): Promise<{ items: SearchHit[]; nextCursor: string | null }>;
+  search(params: SearchParams): Promise<SearchResponse>;
   /** Опубликованный товар активного магазина. */
   card(productId: string): Promise<ProductCard | null>;
+  /** SKU, которые можно заказать: строки корзины (SD-07, п. 5.3). */
+  skus(skuIds: string[]): Promise<SkuLookupResponse>;
+  /** Названия магазинов, у которых бывают заказы, — для «Моих заказов». */
+  sellerNames(sellerIds: string[]): Promise<SellerNamesResponse>;
   categories(): Promise<Category[]>;
   products(filter: {
     sellerId?: string;

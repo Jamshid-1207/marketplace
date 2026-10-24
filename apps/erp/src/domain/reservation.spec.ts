@@ -1,4 +1,10 @@
-import { lowStockCheck, planReservation, type StockRow } from './reservation';
+import {
+  inStock,
+  levelChanged,
+  lowStockCheck,
+  planReservation,
+  type StockRow,
+} from './reservation';
 
 const SELLER_A = 'seller-a';
 const SELLER_B = 'seller-b';
@@ -79,5 +85,31 @@ describe('lowStockCheck', () => {
   it('остаток поднялся выше порога — флаг сбрасывается, следующее падение снова даёт событие', () => {
     expect(lowStockCheck(10, 3, true)).toEqual({ notify: false, notified: false });
     expect(lowStockCheck(2, 3, false).notify).toBe(true);
+  });
+});
+
+describe('наличие на витрине', () => {
+  it('есть, если хоть одну штуку можно зарезервировать на активном складе', () => {
+    expect(inStock([row({ onHand: 1 })])).toBe(true);
+    expect(inStock([row({ onHand: 5, reserved: 5 }), row({ warehouseId: 'w2', onHand: 1 })])).toBe(
+      true,
+    );
+  });
+
+  it('нет: всё зарезервировано, склад выключен или остатка нет вовсе', () => {
+    expect(inStock([row({ onHand: 5, reserved: 5 })])).toBe(false);
+    expect(inStock([row({ active: false, onHand: 10 })])).toBe(false);
+    expect(inStock([])).toBe(false);
+  });
+
+  it('событие — при смене «есть / нет» и первый раз, даже если товара нет', () => {
+    expect(levelChanged({ inStock: false, version: 0 }, false)).toBe(true);
+    expect(levelChanged({ inStock: true, version: 3 }, false)).toBe(true);
+    expect(levelChanged({ inStock: false, version: 4 }, true)).toBe(true);
+  });
+
+  it('значение не поменялось — события нет', () => {
+    expect(levelChanged({ inStock: true, version: 2 }, true)).toBe(false);
+    expect(levelChanged({ inStock: false, version: 2 }, false)).toBe(false);
   });
 });

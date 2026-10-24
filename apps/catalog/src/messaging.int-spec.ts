@@ -1,6 +1,6 @@
 import { Injectable, type INestApplication, type OnModuleInit } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import { newId, SmokePingedV1 } from '@repo/contracts';
+import { newId, SmokePingedV1, StockLevelChangedV1 } from '@repo/contracts';
 import { idempotent } from '@repo/idempotency';
 import { ConsumerRunner } from '@repo/kafka';
 import { runInNewChain } from '@repo/observability';
@@ -45,6 +45,7 @@ describe('catalog: шина и health (интеграция)', () => {
     await createTopics(
       { topic: SmokePingedV1.topic },
       { topic: 'catalog.events' },
+      { topic: 'erp.events' },
       { topic: 'catalog-service.dlq' },
     );
     const config = loadConfig({
@@ -78,6 +79,30 @@ describe('catalog: шина и health (интеграция)', () => {
     expect(await prisma.processedEvent.count({ where: { handler: HANDLER } })).toBe(1);
     const row = await prisma.outbox.findUniqueOrThrow({ where: { eventId: envelope.eventId } });
     expect(row.publishedAt).not.toBeNull();
+  });
+
+  it('stock.level-changed из erp.events (Kafka) доходит до наличия SKU', async () => {
+    const skuId = newId();
+    const sellerId = newId();
+    // erp публикует в erp.events; здесь событие кладёт outbox catalog — путь через Kafka тот же
+    const publish = (version: number, inStock: boolean) =>
+      runInNewChain(() =>
+        prisma.$transaction((tx) =>
+          outbox.add(
+            tx,
+            StockLevelChangedV1,
+            { skuId, sellerId, inStock },
+            { aggregateId: skuId, aggregateVersion: version },
+          ),
+        ),
+      );
+    const stock = () => prisma.skuStock.findUnique({ where: { skuId } });
+
+    await publish(1, true);
+    await eventually(async () => (await stock())?.version === 1, { what: 'наличие версии 1' });
+    await publish(2, false);
+    await eventually(async () => (await stock())?.version === 2, { what: 'наличие версии 2' });
+    expect(await stock()).toEqual({ skuId, inStock: false, version: 2 });
   });
 
   it('/health/ready: база и Kafka доступны', async () => {

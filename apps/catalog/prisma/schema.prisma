@@ -86,15 +86,26 @@ model Product {
 
 /// SKU товара; код уникален в пределах продавца (ADR-0006, п. 5)
 model Sku {
-  skuId      String @id @map("sku_id") @db.Uuid
-  productId  String @map("product_id") @db.Uuid
-  sellerId   String @map("seller_id") @db.Uuid
-  skuCode    String @map("sku_code")
-  attributes Json   @default("{}")
-  priceMinor BigInt @map("price_minor")
+  skuId      String  @id @map("sku_id") @db.Uuid
+  productId  String  @map("product_id") @db.Uuid
+  sellerId   String  @map("seller_id") @db.Uuid
+  skuCode    String  @map("sku_code")
+  attributes Json    @default("{}")
+  priceMinor BigInt  @map("price_minor")
   active     Boolean
 
   @@unique([sellerId, skuCode], map: "skus_seller_code")
   @@index([productId], map: "skus_product")
   @@map("skus")
+}
+
+/// Read-model наличия по stock.level-changed (SD-07, п. 6). Отдельно от skus: SKU — часть
+/// агрегата товара, и его пересохранение при модерации не должно стирать наличие
+model SkuStock {
+  skuId   String  @id @map("sku_id") @db.Uuid
+  inStock Boolean @map("in_stock")
+  /// номер последнего применённого события — aggregateVersion
+  version Int
+
+  @@map("sku_stock")
 }

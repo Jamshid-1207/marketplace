@@ -21,10 +21,11 @@ RUN pnpm nx run @repo/erp:build --output-style=static
 RUN pnpm --filter @repo/erp deploy --legacy --prod /out
 
 # одноразовый шаг миграций (ADR-0004, п. 6): Prisma CLI и prisma/, затем seed складов и
-# остатков при SEED_STOCK=true (SD-03, п. 5.1). Seed собран вместе с сервисом — шаг от build
+# остатков при SEED_STOCK=true (SD-03, п. 5.1) и сверка наличия для витрины (SD-07, п. 6).
+# Seed собран вместе с сервисом — шаг от build
 FROM build AS migrate
 WORKDIR /repo/apps/erp
-CMD ["sh", "-c", "pnpm exec prisma migrate deploy && node dist/seed.js"]
+CMD ["sh", "-c", "pnpm exec prisma migrate deploy && node dist/seed.js && node dist/sync-levels.js"]
 
 FROM ${NODE_IMAGE} AS runtime
 ENV NODE_ENV=production

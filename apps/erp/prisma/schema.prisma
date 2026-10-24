@@ -90,6 +90,17 @@ model StockThreshold {
   @@map("stock_thresholds")
 }
 
+/// Наличие SKU для витрины (SD-07, п. 6): последнее опубликованное «есть / нет»
+model SkuLevel {
+  skuId    String  @id @map("sku_id") @db.Uuid
+  sellerId String  @map("seller_id") @db.Uuid
+  inStock  Boolean @map("in_stock")
+  /// aggregateVersion событий stock.level-changed; 0 — о SKU ещё не сообщали
+  version  Int     @default(0)
+
+  @@map("sku_levels")
+}
+
 /// Резерв заказа целиком: итог ReserveStock и версия событий резерва
 model ReservationOrder {
   orderId     String   @id @map("order_id") @db.Uuid
