@@ -168,14 +168,19 @@ describe('crm: профили, сегменты, CRM продавца (инте�
       4,
     );
 
-    await eventually(async () => (await profile(buyerId))?.payments?.refundedMinor === 200_00, {
-      what: 'возврат в crm',
-    });
-    const p = await profile(buyerId);
-    const status = (id: string) =>
+    const status = (p: Record<string, unknown>, id: string) =>
       (p.orders as { subOrderId: string; status: string }[]).find((o) => o.subOrderId === id)
         ?.status;
-    expect([status(a.subOrderId), status(b.subOrderId)]).toEqual(['delivered', 'cancelled']);
+    // Возврат и отмена идут разными топиками: ждём оба.
+    await eventually(
+      async () => {
+        const p = await profile(buyerId);
+        return p?.payments?.refundedMinor === 200_00 && status(p, b.subOrderId) === 'cancelled';
+      },
+      { what: 'отмена и возврат в crm' },
+    );
+    const p = await profile(buyerId);
+    expect([status(p, a.subOrderId), status(p, b.subOrderId)]).toEqual(['delivered', 'cancelled']);
     expect(p.metrics).toMatchObject({ ltvMinor: 300_00, orders: 1 });
     expect((p.timeline as { kind: string }[]).map((t) => t.kind)).toEqual(
       expect.arrayContaining(['sub_order_delivered', 'sub_order_cancelled', 'refunded']),
