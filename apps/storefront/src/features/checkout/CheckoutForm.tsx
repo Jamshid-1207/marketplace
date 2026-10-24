@@ -58,14 +58,7 @@ export function CheckoutForm({ items, total }: { items: CartItem[]; total: numbe
         </label>
         <label className="block space-y-1 text-sm">
           <span>{t('phone')}</span>
-          <Input
-            name="phone"
-            type="tel"
-            autoComplete="tel"
-            placeholder={t('phoneHint')}
-            pattern="\+?[0-9\s()-]{9,20}"
-            required
-          />
+          <Input name="phone" type="tel" autoComplete="tel" placeholder={t('phoneHint')} required />
         </label>
         <label className="block space-y-1 text-sm">
           <span>{t('address')}</span>

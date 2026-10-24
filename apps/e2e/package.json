@@ -17,7 +17,8 @@
       "@repo/order",
       "@repo/payment",
       "@repo/erp",
-      "@repo/fake-psp"
+      "@repo/fake-psp",
+      "@repo/storefront"
     ],
     "targets": {
       "e2e": {
@@ -31,5 +32,8 @@
   },
   "dependencies": {
     "@repo/contracts": "workspace:*"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.1"
   }
 }

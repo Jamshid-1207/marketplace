@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
-# E2E (SD-02, п. 9–10): стенд compose (profile core) с настройками compose.e2e.yaml → демо-данные
-# в read-моделях → сценарии через gateway → логи при ошибке → стенд удаляется.
+# E2E (SD-02, п. 9–10; SD-07, п. 8): стенд compose (profile full — вместе с витриной) с настройками
+# compose.e2e.yaml → демо-данные в read-моделях → сценарии через gateway (Jest) → сценарии витрины
+# в браузере (Playwright) → логи при ошибке → стенд удаляется.
 set -euo pipefail
 
 cd "$(dirname "$0")/../.."
 [[ -f .env ]] || { echo 'нет .env: cp .env.example .env' >&2; exit 1; }
 
-compose() { docker compose -f compose.yaml -f compose.e2e.yaml --profile core "$@"; }
-SERVICES=(gateway auth catalog order payment erp crm notification fake-psp)
+COMPOSE='docker compose -f compose.yaml -f compose.e2e.yaml --profile full'
+compose() { $COMPOSE "$@"; }
+SERVICES=(gateway auth catalog order payment erp crm notification fake-psp storefront)
 
 finish() {
   local status=$?
@@ -59,9 +61,17 @@ until_rows payment_db 'SELECT count(*) FROM categories' 4
 until_rows crm_db 'SELECT count(*) FROM customers WHERE email IS NOT NULL' 6
 until_rows notification_db 'SELECT count(*) FROM recipients' 6
 until_rows notification_db 'SELECT count(*) FROM shops' 2
+# наличие демо-SKU на витрине — из stock.level-changed, которые выпустил sync-levels (SD-07, п. 6)
+until_rows catalog_db 'SELECT count(*) FROM sku_stock WHERE in_stock' 4
 echo '::endgroup::'
 
 # вход тестовых пользователей — паролем из .env, которым их завёл seed auth
-DEV_USER_PASSWORD="$(sed -n 's/^DEV_USER_PASSWORD=//p' .env)" \
-E2E_COMPOSE='docker compose -f compose.yaml -f compose.e2e.yaml --profile core' \
+DEV_USER_PASSWORD="$(sed -n 's/^DEV_USER_PASSWORD=//p' .env)" E2E_COMPOSE="$COMPOSE" \
   pnpm exec jest --config apps/e2e/jest.e2e.config.cjs
+
+# витрина в браузере (SD-07, решение 11): тот же стенд, только Chromium. В CI браузер вместе с
+# системными библиотеками ставит шаг workflow; здесь — только браузер, если его ещё нет
+echo '::group::браузер Playwright'
+pnpm --filter @repo/e2e exec playwright install chromium
+echo '::endgroup::'
+pnpm --filter @repo/e2e exec playwright test
