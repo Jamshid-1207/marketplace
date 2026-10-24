@@ -192,10 +192,17 @@ describe('notification: письма по событиям (интеграция
     await eventually(() => mailsTo(buyer.email).length === 1, {
       what: 'письмо после восстановления',
     });
-    const row = await prisma.notification.findFirstOrThrow({
-      where: { recipientId: buyer.userId, template: 'order-confirmed' },
+    // письмо уходит раньше, чем строка отмечена отправленной: отметку тоже ждём
+    const sentRow = () =>
+      prisma.notification.findFirstOrThrow({
+        where: { recipientId: buyer.userId, template: 'order-confirmed' },
+      });
+    await eventually(async () => (await sentRow()).status === 'sent', {
+      what: 'письмо отмечено отправленным',
     });
+    const row = await sentRow();
     expect(row).toMatchObject({ status: 'sent', lastError: 'ECONNREFUSED' });
+    expect(mailsTo(buyer.email)).toHaveLength(1);
     expect(mailsTo(buyer.email)[0].messageId).toBe(`<${row.id}@marketplace.test>`);
   });
 });
