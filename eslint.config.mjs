@@ -8,7 +8,7 @@ export default [
     ignores: ['**/dist', '**/out-tsc', '**/test-output', '**/src/generated'],
   },
   {
-    files: ['**/*.ts', '**/*.js', '**/*.cjs', '**/*.mjs'],
+    files: ['**/*.ts', '**/*.tsx', '**/*.js', '**/*.cjs', '**/*.mjs'],
     rules: {
       // Границы модулей: ADR-0003, п. 4
       '@nx/enforce-module-boundaries': [
