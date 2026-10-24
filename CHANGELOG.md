@@ -3,6 +3,10 @@
 Все изменения проекта. Формат: [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/), версии по этапам.
 Типы: **Added**, **Changed**, **Fixed**, **Removed**, **Decided** (архитектурные решения).
 
+## [Unreleased] · Этап 7: Storefront
+### Added
+- `docs/system-design/07-storefront.md`: дизайн этапа 7 — storefront на Next.js как BFF (токены в `HttpOnly` cookie, одно обновление токена на refresh, Server Actions), страницы каталога, корзины, оформления и заказов, корзина в order с гостевой корзиной и объединением при входе, очистка корзины при подтверждении заказа, наличие на витрине (`stock.level-changed` erp → catalog), возврат с оплаты fake-psp, лимит гостей по IP клиента, Playwright-сценарии, демо-витрина; 12 сценариев готовности. На согласовании.
+
 ## [0.7.0] - 2026-10-24 · Этап 6: CRM и уведомления ✅
 Критерии SD-06 выполнены: сценарии этапа 6 и этапов 2–5 проходят в job `e2e` (письма — через Mailpit), интеграционные тесты crm и notification — в `integration`, все пять job'ов CI зелёные.
 
