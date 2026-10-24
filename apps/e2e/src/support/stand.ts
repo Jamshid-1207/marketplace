@@ -72,14 +72,17 @@ function isStaleConnection(error: unknown): boolean {
 /**
  * `fetch` стенда. После `docker compose stop/start` тест простаивает дольше keep-alive сервера,
  * и следующий запрос может попасть на уже закрытый сокет. Такой запрос до сервера не дошёл —
- * один повтор безопасен; любая другая ошибка пробрасывается.
+ * повтор безопасен. Закрытых сокетов в пуле может быть несколько (параллельные запросы держат
+ * несколько соединений), поэтому повторов — до `STALE_RETRIES`; любая другая ошибка пробрасывается.
  */
+const STALE_RETRIES = 5;
+
 export async function standFetch(url: string, init: RequestInit = {}): Promise<Response> {
-  const attempt = () => fetch(url, { ...init, signal: AbortSignal.timeout(15_000) });
-  try {
-    return await attempt();
-  } catch (error) {
-    if (!isStaleConnection(error)) throw error;
-    return attempt();
+  for (let retry = 0; ; retry++) {
+    try {
+      return await fetch(url, { ...init, signal: AbortSignal.timeout(15_000) });
+    } catch (error) {
+      if (!isStaleConnection(error) || retry >= STALE_RETRIES) throw error;
+    }
   }
 }

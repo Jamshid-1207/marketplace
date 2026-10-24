@@ -111,8 +111,11 @@ describe('этап 3: склад', () => {
   it('2. у продавца не хватает товара: CANCELLED (out_of_stock), оплата не запрашивалась', async () => {
     const stock = await sellerB.stock(pots.skuId);
     // оставить на складе B ровно 5 штук: сценарии 2 и 5 делят этот остаток
-    const res = await sellerB.adjust(warehouseB, pots.skuId, 5 - stock.available);
-    expect(res.status).toBe(201);
+    // остаток уже мог стать 5 в другом сценарии; корректировка на 0 — 400
+    if (stock.available !== 5) {
+      const res = await sellerB.adjust(warehouseB, pots.skuId, 5 - stock.available);
+      expect(res.status).toBe(201);
+    }
     const orderId = await order([
       { skuId: phone.skuId, qty: 1 },
       { skuId: pots.skuId, qty: 6 },
