@@ -26,6 +26,14 @@
         "options": {
           "command": "bash apps/e2e/run.sh"
         },
+        "dependsOn": [
+          {
+            "projects": [
+              "@repo/contracts"
+            ],
+            "target": "build"
+          }
+        ],
         "cache": false
       }
     }
