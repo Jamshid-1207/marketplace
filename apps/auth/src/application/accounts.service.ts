@@ -1,23 +1,15 @@
-import { newId, UserRegisteredV1 } from '@repo/contracts';
+import {
+  newId,
+  UserRegisteredV1,
+  type MeResponse,
+  type RegisterResponse,
+  type TokenPair,
+} from '@repo/contracts';
 import { createHash, randomBytes } from 'node:crypto';
 import { claimsFor, normalizeEmail, type Membership, type User } from '../domain/account';
 import { rejection, type RefreshToken } from '../domain/refresh';
 import { ConflictError, NotFoundError, UnauthenticatedError } from './errors';
 import type { AccountsRepository, AccountsTx, Log, PasswordHasher, TokenSigner } from './ports';
-
-export interface TokenPair {
-  accessToken: string;
-  refreshToken: string;
-  /** Секунд до истечения access-токена. */
-  expiresIn: number;
-}
-
-export interface MeView {
-  userId: string;
-  email: string;
-  roles: string[];
-  seller: { sellerId: string; role: string; scopes: string[]; status: string } | null;
-}
 
 export interface AccountsOptions {
   accessTtlSeconds: number;
@@ -40,7 +32,7 @@ export class AccountsService {
     private readonly clock: () => Date = () => new Date(),
   ) {}
 
-  async register(input: { email: string; password: string }): Promise<{ userId: string }> {
+  async register(input: { email: string; password: string }): Promise<RegisterResponse> {
     const user: User = {
       userId: newId(),
       email: normalizeEmail(input.email),
@@ -100,7 +92,7 @@ export class AccountsService {
   }
 
   /** Профиль и роли по базе, а не по токену: токен может отставать до 15 минут. */
-  async me(userId: string): Promise<MeView> {
+  async me(userId: string): Promise<MeResponse> {
     return this.repository.transaction(async (tx) => {
       const user = await tx.user(userId);
       if (!user) throw new NotFoundError('пользователь');

@@ -16,12 +16,18 @@ export const ShippingAddress = z.object({
 });
 export type ShippingAddress = z.infer<typeof ShippingAddress>;
 
+/** Количество в строке заказа и корзины. */
+export const LineQty = z.number().int().min(1).max(99);
+
+/** Строк в заказе и в корзине — не больше (SD-07, п. 5.1). */
+export const MAX_ORDER_LINES = 50;
+
 /** `POST /orders` (SD-02, п. 5.3). Цены и продавцы берутся из каталога, а не из запроса. */
 export const CreateOrderRequest = z.object({
   lines: z
-    .array(z.object({ skuId: z.uuid(), qty: z.number().int().min(1).max(99) }))
+    .array(z.object({ skuId: z.uuid(), qty: LineQty }))
     .min(1)
-    .max(50)
+    .max(MAX_ORDER_LINES)
     .refine((lines) => new Set(lines.map((l) => l.skuId)).size === lines.length, {
       message: 'каждый SKU — одной строкой',
     }),

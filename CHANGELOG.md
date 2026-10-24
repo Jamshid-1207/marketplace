@@ -5,10 +5,20 @@
 
 ## [Unreleased] · Этап 7: Storefront
 ### Added
+- **Шаг 1: контракты** (SD-07, п. 4).
+  - Событие `stock.level-changed` (`erp.events`, ключ и агрегат — SKU): `skuId`, `sellerId`, `inStock`; фикстура контракт-теста. Ключ SKU у событий об остатке, ключ заказа у ответов saga — проверка в `checkout.spec.ts` теперь по типу агрегата.
+  - Схемы API: `api/auth/session.ts` (вход, регистрация, токены, `me`), `api/catalog/storefront.ts` (поиск с `inStock`, `sellerName`, `image`; карточка с наличием SKU; дерево категорий; `/catalog/skus` и `/catalog/sellers` до 50 id), `api/order/cart.ts` (корзина, `PUT` строки, объединение с `skipped`). Пределы строки — общие с `POST /orders`: `LineQty`, `MAX_ORDER_LINES`.
+  - auth разбирает тела запросов и типизирует ответы схемами из контрактов вместо своих.
+  - `formatSum` в `libs/contracts/src/money.ts` — для notification, fake-psp и storefront; целая часть и тийины считаются целыми числами, без потери точности на больших суммах.
+  - `catalog-service.dlq` уже был в `infra/kafka/topics.conf` с этапа 5 — изменений не нужно.
 - `docs/system-design/07-storefront.md`: дизайн этапа 7 — storefront на Next.js как BFF (токены в `HttpOnly` cookie, одно обновление токена на refresh, Server Actions), страницы каталога, корзины, оформления и заказов, корзина в order с гостевой корзиной и объединением при входе, очистка корзины при подтверждении заказа, наличие на витрине (`stock.level-changed` erp → catalog), возврат с оплаты fake-psp, лимит гостей по IP клиента, Playwright-сценарии, демо-витрина; 12 сценариев готовности.
 
 ### Decided
 - SD-07 утверждён: storefront — BFF с токенами в `HttpOnly` cookie; одно обновление токена на refresh в middleware; мутации — Server Actions, чтение для клиента — `GET /bff/**`; гостевая корзина в `localStorage`, при объединении — большее количество; корзина очищается при подтверждении заказа; `stock.level-changed` — только при смене «есть / нет»; адрес возврата с оплаты — из конфига payment; данные для показа — синхронным чтением из catalog с деградацией; лимит гостей — по `X-Forwarded-For` только от адреса storefront; тексты — next-intl; UI-тесты — Playwright в job `e2e`; демо-витрина — `SEED_SHOWCASE`.
+- `OrderView` получает `unavailableSkus` и `refundStatus` в шаге 3 вместе с order, а не в шаге 1: для `unavailableSkus` нужна миграция order, а контракт не должен обещать поля, которых сервис ещё не отдаёт.
+
+### Changed
+- Суммы в письмах и на странице fake-psp — одной функцией: тийины показываются двумя знаками и только если они есть («590,50 сум», раньше в письмах «590,5 сум»; на странице fake-psp «2 990 000 сум», раньше «2 990 000,00 сум»).
 
 ## [0.7.0] - 2026-10-24 · Этап 6: CRM и уведомления ✅
 Критерии SD-06 выполнены: сценарии этапа 6 и этапов 2–5 проходят в job `e2e` (письма — через Mailpit), интеграционные тесты crm и notification — в `integration`, все пять job'ов CI зелёные.

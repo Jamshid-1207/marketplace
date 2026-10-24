@@ -11,6 +11,7 @@ import {
   StockReleasedV1,
   StockReservedV1,
 } from './events/erp/stock-events.v1';
+import { StockLevelChangedV1 } from './events/erp/stock-level-changed.v1';
 import { OrderCancelledV1 } from './events/order/order-cancelled.v1';
 import { OrderConfirmedV1 } from './events/order/order-confirmed.v1';
 import { OrderCreatedV1 } from './events/order/order-created.v1';
@@ -86,4 +87,6 @@ export const messages = new MessageRegistry([
   CategoryUpdatedV1,
   ProductPublishedV1,
   ProductUnpublishedV1,
+  // наличие на витрине (SD-07, п. 6)
+  StockLevelChangedV1,
 ]);

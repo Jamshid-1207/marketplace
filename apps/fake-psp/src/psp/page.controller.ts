@@ -1,10 +1,8 @@
 import { Controller, Get, Header, NotFoundException, Param, Post, Redirect } from '@nestjs/common';
+import { formatSum } from '@repo/contracts';
 import { PspStore, type PspPayment } from './psp-store';
 
 const escape = (value: string) => value.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
-
-const formatSum = (minor: number) =>
-  `${(minor / 100).toLocaleString('ru-RU', { minimumFractionDigits: 2 })} сум`;
 
 const STATUS_TEXT: Record<PspPayment['status'], string> = {
   requires_action: 'Ожидает оплаты',

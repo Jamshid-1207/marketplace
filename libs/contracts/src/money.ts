@@ -83,3 +83,16 @@ export function toSafeNumber(value: bigint): number {
   }
   return Number(value);
 }
+
+/**
+ * Сумма для человека: «2 990 000 сум», «590,50 сум». Целые сумы и тийины разбираются целыми
+ * числами: `amountMinor / 100` у больших сумм теряет копейки. Разряды — обычным пробелом, чтобы
+ * текст писем, страниц и тестов совпадал.
+ */
+export function formatSum(amountMinor: number): string {
+  // у -50 тийинов целая часть -0, и Intl покажет её со знаком: «-0,50 сум»
+  const whole = new Intl.NumberFormat('ru-RU').format(Math.trunc(amountMinor / 100));
+  const cents = Math.abs(amountMinor % 100);
+  const fraction = cents === 0 ? '' : `,${String(cents).padStart(2, '0')}`;
+  return `${whole.replace(/\s/g, ' ')}${fraction} сум`;
+}

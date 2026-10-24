@@ -1,0 +1,16 @@
+{
+  "eventId": "0192b4c6-0000-7000-8000-00000000e110",
+  "type": "stock.level-changed",
+  "version": 1,
+  "aggregateType": "stock-level",
+  "aggregateId": "0192b4c6-0000-7000-8000-00000000a101",
+  "aggregateVersion": 2,
+  "occurredAt": "2026-10-24T10:00:00.000Z",
+  "correlationId": "req-checkout-1",
+  "causationId": "0192b4c6-0000-7000-8000-00000000e011",
+  "payload": {
+    "skuId": "0192b4c6-0000-7000-8000-00000000a101",
+    "sellerId": "0192b4c6-0000-7000-8000-00000000a000",
+    "inStock": false
+  }
+}

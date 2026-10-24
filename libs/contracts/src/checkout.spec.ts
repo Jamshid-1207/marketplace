@@ -94,10 +94,12 @@ describe('сообщения оформления', () => {
     expect(CapturePaymentV1.key({ orderId: 'o-1', subOrders: [] })).toBe('o-1');
   });
 
-  it('ответы erp — ключ orderId; stock.low — ключ skuId', () => {
+  it('ответы erp — ключ orderId; события об остатке SKU (stock.low, stock.level-changed) — skuId', () => {
     for (const definition of messages.definitions().filter((d) => d.topic === 'erp.events')) {
       const payload = { orderId: 'order', skuId: 'sku' };
-      expect(definition.key(payload)).toBe(definition.type === 'stock.low' ? 'sku' : 'order');
+      expect(definition.key(payload)).toBe(
+        definition.aggregateType === 'reservation' ? 'order' : 'sku',
+      );
     }
   });
 

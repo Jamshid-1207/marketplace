@@ -1,13 +1,8 @@
-import { number, render, sum, type Template, type TemplateData } from './templates';
+import { number, render, type Template, type TemplateData } from './templates';
 
 const orderId = '01a16997-cfcd-7696-ba40-6526a65f1898';
 
 describe('шаблоны писем', () => {
-  it('сумма — в сумах из тийинов', () => {
-    expect(sum(2_990_000_00)).toBe('2 990 000 сум');
-    expect(sum(59_050)).toBe('590,5 сум');
-  });
-
   it('номер заказа — хвост UUID', () => {
     expect(number(orderId)).toBe('A65F1898');
   });

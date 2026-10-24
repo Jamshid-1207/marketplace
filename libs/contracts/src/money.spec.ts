@@ -1,6 +1,7 @@
 import fc from 'fast-check';
 import {
   add,
+  formatSum,
   MAX_BP,
   money,
   MoneyError,
@@ -104,5 +105,16 @@ describe('money: свойства', () => {
         expect(BigInt(result)).toBe((BigInt(m.amountMinor) * BigInt(rate)) / 10_000n);
       }),
     );
+  });
+
+  it('formatSum: сумы с разрядами, тийины — только когда есть', () => {
+    expect(formatSum(2_990_000_00)).toBe('2 990 000 сум');
+    expect(formatSum(59_050)).toBe('590,50 сум');
+    expect(formatSum(5)).toBe('0,05 сум');
+    expect(formatSum(0)).toBe('0 сум');
+    expect(formatSum(-50)).toBe('-0,50 сум');
+    expect(formatSum(-1_234_567)).toBe('-12 345,67 сум');
+    // деление на 100 во float потеряло бы последние тийины
+    expect(formatSum(MAX)).toBe('90 071 992 547 409,91 сум');
   });
 });
