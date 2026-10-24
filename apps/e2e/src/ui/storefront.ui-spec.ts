@@ -17,6 +17,9 @@ async function addToCart(page: Page, productId: string) {
 
 async function register(page: Page) {
   const email = `ui-${randomUUID().slice(0, 8)}@e2e.test`;
+  // со входа на регистрацию переходят на клиенте: пока форма входа на экране, её поле Email
+  // нашлось бы под тем же именем, а введённое пропало бы вместе с ней
+  await expect(page.getByRole('heading', { name: 'Регистрация' })).toBeVisible();
   await page.getByLabel('Email').fill(email);
   await page.getByLabel('Пароль').fill(password);
   await page.getByRole('button', { name: 'Зарегистрироваться' }).click();
