@@ -6,6 +6,7 @@ import {
   RequestMethod,
   SetMetadata,
   UseGuards,
+  UseInterceptors,
   type CanActivate,
   type ExecutionContext,
   type INestApplication,
@@ -13,6 +14,7 @@ import {
 import { METHOD_METADATA, PATH_METADATA } from '@nestjs/common/constants';
 import { ModulesContainer, Reflector } from '@nestjs/core';
 import type { AccessScope, Claims, SellerPermission } from './claims';
+import { TenantInterceptor } from './tenant';
 
 export type SellerAccess = AccessScope & { kind: 'seller' };
 
@@ -54,10 +56,15 @@ export class SellerGuard implements CanActivate {
 
 /**
  * Эндпоинт кабинета продавца с правом `permission`. Метаданные декоратора — источник списка
- * эндпоинтов для теста изоляции: новый эндпоинт попадает в проверку сам (ADR-0006, п. 8).
+ * эндпоинтов для теста изоляции: новый эндпоинт попадает в проверку сам (ADR-0006, п. 8). Он же
+ * включает режим магазина: запросы к базе — под RLS этого магазина (SD-09, п. 5).
  */
 export const SellerScope = (permission: SellerPermission) =>
-  applyDecorators(SetMetadata(SELLER_PERMISSION, permission), UseGuards(SellerGuard));
+  applyDecorators(
+    SetMetadata(SELLER_PERMISSION, permission),
+    UseGuards(SellerGuard),
+    UseInterceptors(TenantInterceptor),
+  );
 
 /** Область продавца текущего запроса; эндпоинт должен быть помечен `@SellerScope`. */
 export const CurrentSeller = createParamDecorator((_: unknown, context: ExecutionContext) => {

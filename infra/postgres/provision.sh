@@ -26,6 +26,8 @@ grep -v -e '^[[:space:]]*#' -e '^[[:space:]]*$' "$LIST" | while read -r name; do
 SELECT format('CREATE ROLE %I LOGIN', :'role')
 WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = :'role') \gexec
 SELECT format('ALTER ROLE %I LOGIN PASSWORD %L', :'role', :'pass') \gexec
+-- RLS (SD-09, п. 5): сервис работает как платформа; режим магазина включают эндпоинты кабинета
+SELECT format('ALTER ROLE %I SET app.bypass_tenant = %L', :'role', 'on') \gexec
 SQL
 
   for db in "${name}_db" "${name}_db_shadow"; do

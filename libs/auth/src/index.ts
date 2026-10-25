@@ -5,3 +5,5 @@ export * from './guard';
 export * from './signer';
 export * from './verifier';
 export * from './seller';
+export * from './tenant';
+export * from './tenant-adapter';

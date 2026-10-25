@@ -5,6 +5,12 @@
 
 ## [Unreleased] · Этап 9: Hardening
 ### Added
+- **Шаг 2: RLS — вторая линия изоляции продавцов** (SD-09, п. 5, решение 5; ADR-0006, п. 9).
+  - Миграции catalog (`3_rls`), erp (`3_rls`), order (`5_rls`), payment (`5_rls`), crm (`2_rls`): `ENABLE` и `FORCE ROW LEVEL SECURITY` и политика `seller_isolation` на таблицах продавца — строка видна, если `app.bypass_tenant = on` или `seller_id` совпадает с `app.seller_id` (сравнение текстом); проверка той же политикой и при записи.
+  - provisioning: роли сервисов работают с `app.bypass_tenant = on` по умолчанию — обработчики событий, saga, админка, витрина, seed и скрипты не меняются.
+  - `libs/auth`: `@SellerScope` включает режим магазина (`TenantInterceptor`, контекст `runAsTenant`); `tenantAware` — обёртка драйвер-адаптера Prisma: в режиме магазина одиночный запрос идёт в своей транзакции, а транзакция начинается с `set_config('app.bypass_tenant', 'off', true)` и `set_config('app.seller_id', …, true)` — RLS защищает и raw SQL, и запрос без условия по магазину; настройки живут до конца транзакции, пул соединений не загрязняется. Пять сервисов создают `PrismaPg` через неё.
+  - Тесты: unit — SQL обёртки вне кабинета, одиночный запрос и транзакция магазина, откат при ошибке, перехватчик; интеграционные — в erp на роли без привилегий суперпользователя чтение и изменение без условия по магазину видят и меняют только свои строки, в raw SQL и интерактивной транзакции тоже, строку чужого магазина не создать, соединение пула после запроса магазина снова работает как платформа; в catalog, order, payment и crm — политика включена и принудительна на всех таблицах продавца. `libs/testing`: `rlsRoleUrl`, `tablesWithoutRls`.
+  - ADR-0006, ревизия 4 — п. 9 по факту.
 - **Шаг 1: метрики, OpenTelemetry Collector, Prometheus, Grafana** (SD-09, п. 4, решения 4 и 6).
   - compose, профиль `infra`: `otel-collector` (`otel/opentelemetry-collector-contrib:0.162.0`, OTLP на 4318) — трейсы в Jaeger, метрики в Prometheus remote write, lag групп потребителей и смещения партиций — receiver `kafka_metrics` прямо из брокера; `prometheus` (`v3.15.0`, 9090, приём remote write, хранение 2 дня); `grafana` (`13.2.3`, 3005, вход без пароля — только локальный стенд). Сервисы и фронты шлют OTLP в Collector, Jaeger больше не публикует 4318 на хост; шаблон генератора сервисов — так же.
   - `libs/observability`: метрики OpenTelemetry уходят в Collector раз в 10 с; гистограмму `http.server.request.duration` даёт HTTP-инструментация.

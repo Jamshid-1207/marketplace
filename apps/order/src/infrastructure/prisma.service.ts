@@ -1,5 +1,6 @@
 import { Inject, Injectable, type OnModuleDestroy } from '@nestjs/common';
 import { PrismaPg } from '@prisma/adapter-pg';
+import { tenantAware } from '@repo/auth';
 import type { ReadinessCheck } from '@repo/observability';
 import { CONFIG, type Config } from '../config';
 import { PrismaClient } from '../generated/prisma/client';
@@ -8,9 +9,11 @@ import { PrismaClient } from '../generated/prisma/client';
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleDestroy {
   constructor(@Inject(CONFIG) config: Config) {
-    // размер пула задаётся явно (ADR-0004, п. 5)
+    // размер пула задаётся явно (ADR-0004, п. 5); режим магазина для кабинета — RLS (SD-09, п. 5)
     super({
-      adapter: new PrismaPg({ connectionString: config.DATABASE_URL, max: config.DB_POOL_MAX }),
+      adapter: tenantAware(
+        new PrismaPg({ connectionString: config.DATABASE_URL, max: config.DB_POOL_MAX }),
+      ),
     });
   }
 
