@@ -1,5 +1,5 @@
 import { DEV_CATALOG } from '@repo/contracts';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type BrowserContext, type Page } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 
 const [phone, , kettle] = DEV_CATALOG; // магазин A и магазин B
@@ -46,6 +46,8 @@ const status = (page: Page) => page.getByTestId('order-status');
  */
 test.describe.serial('витрина в браузере', () => {
   let orderUrl = '';
+  /** Cookie сессии покупателя первого сценария: у каждого теста свой чистый контекст браузера. */
+  let buyer: Awaited<ReturnType<BrowserContext['storageState']>> | undefined;
 
   test('1, 2. каталог: поиск, категория, карточка с ценой и наличием', async ({ page }) => {
     await page.goto('/');
@@ -95,6 +97,7 @@ test.describe.serial('витрина в браузере', () => {
     // fake-psp вернул покупателя на страницу заказа витрины
     await page.waitForURL(/localhost:3001\/orders\//);
     orderUrl = page.url();
+    buyer = await page.context().storageState();
     await expect(status(page)).toHaveText('Заказ оформлен', { timeout: 60_000 });
     await expect(page.getByTestId('sub-order')).toHaveCount(2);
     await expect(page.getByText('Магазин A', { exact: true })).toBeVisible();
@@ -115,17 +118,23 @@ test.describe.serial('витрина в браузере', () => {
   });
 
   test('8. покупатель отменяет под-заказ до отгрузки: «Отменён», затем «Деньги возвращены»', async ({
-    page,
+    browser,
   }) => {
-    test.skip(!orderUrl, 'нужен заказ предыдущего сценария');
-    page.on('dialog', (dialog) => void dialog.accept());
-    await page.goto(orderUrl);
-    const first = page.getByTestId('sub-order').first();
-    await first.getByRole('button', { name: 'Отменить' }).click();
-    await expect(first.getByText('Отменён', { exact: true })).toBeVisible();
-    await expect(first.getByText('Деньги возвращены')).toBeVisible({ timeout: 90_000 });
-    // второй под-заказ не изменился
-    await expect(page.getByTestId('sub-order').nth(1).getByText('Собирается')).toBeVisible();
+    test.skip(!orderUrl || !buyer, 'нужен заказ и сессия покупателя предыдущего сценария');
+    const context = await browser.newContext({ storageState: buyer, locale: 'ru-RU' });
+    try {
+      const page = await context.newPage();
+      page.on('dialog', (dialog) => void dialog.accept());
+      await page.goto(orderUrl);
+      const first = page.getByTestId('sub-order').first();
+      await first.getByRole('button', { name: 'Отменить' }).click();
+      await expect(first.getByText('Отменён', { exact: true })).toBeVisible();
+      await expect(first.getByText('Деньги возвращены')).toBeVisible({ timeout: 90_000 });
+      // второй под-заказ не изменился
+      await expect(page.getByTestId('sub-order').nth(1).getByText('Собирается')).toBeVisible();
+    } finally {
+      await context.close();
+    }
   });
 
   test('5. банк отклонил оплату — «Ожидает оплаты» и кнопка «Перейти к оплате»; вторая попытка проходит', async ({
