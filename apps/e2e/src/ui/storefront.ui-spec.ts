@@ -107,10 +107,11 @@ test.describe.serial('витрина в браузере', () => {
     await expect(page.getByRole('link', { name: /Заказ .* Заказ оформлен/ })).toHaveCount(1);
 
     // оформление — один трейс, он начинается в storefront (SD-07, п. 1, сценарий 4)
-    const services = (await (await fetch(`${JAEGER_URL}/api/services`)).json()) as {
-      data: string[];
+    // API Jaeger v2 — `/api/v3/…`, как в сценарии трейса checkout
+    const services = (await (await fetch(`${JAEGER_URL}/api/v3/services`)).json()) as {
+      services: string[];
     };
-    expect(services.data).toContain('storefront');
+    expect(services.services).toContain('storefront');
   });
 
   test('8. покупатель отменяет под-заказ до отгрузки: «Отменён», затем «Деньги возвращены»', async ({
