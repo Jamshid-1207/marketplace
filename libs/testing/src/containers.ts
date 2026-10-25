@@ -1,4 +1,5 @@
 import { PostgreSqlContainer } from '@testcontainers/postgresql';
+import { Kafka, logLevel } from 'kafkajs';
 import { readFileSync } from 'node:fs';
 import { createServer, type AddressInfo } from 'node:net';
 import { Client } from 'pg';
@@ -54,6 +55,8 @@ export async function startKafka(): Promise<StartedKafka> {
       KAFKA_CONTROLLER_LISTENER_NAMES: 'CONTROLLER',
       KAFKA_CONTROLLER_QUORUM_VOTERS: '1@localhost:9093',
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: '1',
+      // одна партиция `__consumer_offsets` вместо 50: координатор групп загружается сразу
+      KAFKA_OFFSETS_TOPIC_NUM_PARTITIONS: '1',
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: '1',
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: '1',
       KAFKA_SHARE_COORDINATOR_STATE_TOPIC_REPLICATION_FACTOR: '1',
@@ -65,7 +68,37 @@ export async function startKafka(): Promise<StartedKafka> {
     .withWaitStrategy(Wait.forLogMessage(/Kafka Server started/))
     .withStartupTimeout(120_000)
     .start();
-  return { container, brokers: `localhost:${port}` };
+  const brokers = `localhost:${port}`;
+  await warmUpGroupCoordinator(brokers);
+  return { container, brokers };
+}
+
+/**
+ * Координатор групп готов до первого теста. `__consumer_offsets` создаётся при первом обращении
+ * к группе и сначала загружается: consumer'ы сервисов получали «coordinator is loading»,
+ * перезапускались и вступали в группу так поздно, что тест не дожидался события.
+ */
+async function warmUpGroupCoordinator(brokers: string, timeoutMs = 60_000): Promise<void> {
+  const admin = new Kafka({
+    clientId: 'warm-up',
+    brokers: [brokers],
+    logLevel: logLevel.NOTHING,
+  }).admin();
+  await admin.connect();
+  try {
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      try {
+        await admin.describeGroups(['warm-up']);
+        return;
+      } catch (error) {
+        if (Date.now() > deadline) throw error;
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+    }
+  } finally {
+    await admin.disconnect();
+  }
 }
 
 /** Postgres; `ddlFiles` накатываются сразу — для libs, у которых нет своих миграций. */
