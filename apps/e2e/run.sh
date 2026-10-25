@@ -82,7 +82,8 @@ echo '::endgroup::'
 pnpm --filter @repo/e2e exec playwright test
 
 # метрики сервисов прошли путь сервис → OpenTelemetry Collector → Prometheus (SD-09, п. 4):
-# HTTP, saga оформления, обработка сообщений, outbox и lag групп из Kafka
+# HTTP, saga оформления, обработка сообщений, outbox и lag групп из Kafka (у lag единица «1»:
+# перевод в Prometheus добавляет суффикс _ratio)
 echo '::group::метрики в Prometheus'
 has_metric() {
   curl -fsS -G http://localhost:9090/api/v1/query --data-urlencode "query=$1" | grep -q '"value"'
@@ -92,7 +93,7 @@ for query in \
   'checkout_saga_transitions_total' \
   'messaging_process_duration_seconds_count' \
   'outbox_publish_delay_seconds_count' \
-  'kafka_consumer_group_lag'; do
+  '{__name__=~"kafka_consumer_group_lag(_ratio)?"}'; do
   has_metric "$query" || { echo "нет метрики в Prometheus: $query" >&2; exit 1; }
   echo "есть: $query"
 done

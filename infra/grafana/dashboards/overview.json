@@ -221,7 +221,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (group) (kafka_consumer_group_lag)",
+          "expr": "sum by (group) ({__name__=~\"kafka_consumer_group_lag(_ratio)?\"})",
           "legendFormat": "{{group}}"
         }
       ]
