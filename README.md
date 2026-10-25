@@ -19,10 +19,12 @@ pnpm nx affected -t test-integration            # интеграционные �
 
 pnpm nx g @repo/generators:service <name>       # новый сервис по шаблону
 docker compose --profile core up -d --build     # инфраструктура и сервисы
-docker compose --profile full up -d --build     # и витрина: http://localhost:3001 (SD-07)
+docker compose --profile full up -d --build     # и фронты: витрина http://localhost:3001 (SD-07), кабинет http://localhost:3002 (SD-08)
 ```
 
 На витрине — демо-товары магазинов A и B (`SEED_SHOWCASE=true`). Тестовый покупатель — `buyer-1@marketplace.test` с паролем `DEV_USER_PASSWORD` из `.env`; можно и зарегистрироваться. Оплата — кнопкой «Оплатить» на странице `fake-psp` (порт 4000).
+
+В кабинет входят тем же паролем: владелец магазина A — `seller-a@marketplace.test`, сотрудник магазина A только с правом заказов — `manager-a@marketplace.test`, админ платформы — `admin@marketplace.test`. Новый пользователь открывает свой магазин на странице «Открыть магазин»: кабинет доступен сразу, а товары попадут на витрину, когда админ одобрит магазин и сами товары.
 
 ## Документация
 - [ТЗ](docs/TZ.md)
@@ -34,6 +36,7 @@ docker compose --profile full up -d --build     # и витрина: http://loca
 - [System Design 05: продавцы и каталог](docs/system-design/05-sellers-and-catalog.md)
 - [System Design 06: CRM и уведомления](docs/system-design/06-crm-and-notifications.md)
 - [System Design 07: витрина](docs/system-design/07-storefront.md)
+- [System Design 08: кабинет продавца и админка](docs/system-design/08-backoffice.md)
 - [ADR](docs/adr/): архитектурные решения
 - [CHANGELOG](CHANGELOG.md): журнал всех изменений
 
