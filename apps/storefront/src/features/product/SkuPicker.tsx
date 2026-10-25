@@ -5,9 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useState, useTransition } from 'react';
-import { Badge } from '../../components/ui/badge';
-import { Button } from '../../components/ui/button';
-import { cn } from '../../components/ui/cn';
+import { Badge, Button, cn } from '@repo/ui';
 import { addToCart } from '../cart/actions';
 import { addGuestLine, loadGuestCart, saveGuestCart } from '../cart/guest-cart';
 

@@ -27,6 +27,12 @@
   "exclude": ["node_modules", ".next"],
   "references": [
     {
+      "path": "../../libs/web-session"
+    },
+    {
+      "path": "../../libs/ui"
+    },
+    {
       "path": "../../libs/contracts"
     }
   ]

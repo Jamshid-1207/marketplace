@@ -1,7 +1,7 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
-import { Button } from '../components/ui/button';
+import { Button } from '@repo/ui';
 
 /** Сбой при рендере страницы — чаще всего недоступен gateway: предложить повторить. */
 export default function ErrorPage({ reset }: { error: Error; reset: () => void }) {

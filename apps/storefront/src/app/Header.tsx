@@ -1,8 +1,7 @@
 import { CartView } from '@repo/contracts';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
-import { Button } from '../components/ui/button';
-import { Input } from '../components/ui/input';
+import { Button, Input } from '@repo/ui';
 import { CartBadge } from '../features/cart/CartBadge';
 import { logout } from '../features/session/actions';
 import { gateway, optional } from '../server/gateway';

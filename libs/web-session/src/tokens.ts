@@ -1,11 +1,15 @@
 import type { TokenPair } from '@repo/contracts';
 
 /**
- * Сессия витрины (SD-07, п. 3.1): токены auth лежат в `HttpOnly` cookie, браузерный JS их не
- * видит. Модуль без `server-only`: его использует и middleware (`proxy.ts`).
+ * Сессия фронта (SD-07, п. 3.1): токены auth лежат в `HttpOnly` cookie, браузерный JS их не
+ * видит. Имена cookie у каждого фронта свои: на одном хосте cookie не различают порты, и вход
+ * в кабинет иначе подменял бы сессию витрины (SD-08, решение 3). Модуль без `server-only`:
+ * его использует и middleware.
  */
-export const ACCESS_COOKIE = 'sf_access';
-export const REFRESH_COOKIE = 'sf_refresh';
+export interface SessionCookies {
+  access: string;
+  refresh: string;
+}
 
 /** Срок refresh-токена — 7 дней (ТЗ, 3.1). */
 export const REFRESH_MAX_AGE_S = 7 * 24 * 60 * 60;
@@ -14,7 +18,7 @@ export const REFRESH_MAX_AGE_S = 7 * 24 * 60 * 60;
 export const REFRESH_MARGIN_MS = 60_000;
 
 /**
- * Срок access-токена из его payload, без проверки подписи: витрине нужно только решить, пора ли
+ * Срок access-токена из его payload, без проверки подписи: фронту нужно только решить, пора ли
  * обновлять. Подпись проверяют gateway и сервисы (ADR-0006, п. 4).
  */
 export function accessExpiresAt(token: string | undefined): number | null {
@@ -44,16 +48,21 @@ interface CookieJar {
   ): unknown;
 }
 
-export function writeSession(jar: CookieJar, pair: TokenPair, secure: boolean): void {
+export function writeSession(
+  jar: CookieJar,
+  names: SessionCookies,
+  pair: TokenPair,
+  secure: boolean,
+): void {
   const options = { httpOnly: true, sameSite: 'lax' as const, path: '/', secure };
-  jar.set(ACCESS_COOKIE, pair.accessToken, { ...options, maxAge: pair.expiresIn });
-  jar.set(REFRESH_COOKIE, pair.refreshToken, { ...options, maxAge: REFRESH_MAX_AGE_S });
+  jar.set(names.access, pair.accessToken, { ...options, maxAge: pair.expiresIn });
+  jar.set(names.refresh, pair.refreshToken, { ...options, maxAge: REFRESH_MAX_AGE_S });
 }
 
 /** Ещё и `request.cookies` в middleware: у них `set` без параметров cookie. */
-export function clearSession(jar: { delete(name: string): unknown }): void {
-  jar.delete(ACCESS_COOKIE);
-  jar.delete(REFRESH_COOKIE);
+export function clearSession(jar: { delete(name: string): unknown }, names: SessionCookies): void {
+  jar.delete(names.access);
+  jar.delete(names.refresh);
 }
 
 /** Первый адрес из `X-Forwarded-For`: Next.js записывает туда адрес клиента. */

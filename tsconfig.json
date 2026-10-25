@@ -56,6 +56,12 @@
     },
     {
       "path": "./apps/notification"
+    },
+    {
+      "path": "./libs/web-session"
+    },
+    {
+      "path": "./libs/ui"
     }
   ]
 }

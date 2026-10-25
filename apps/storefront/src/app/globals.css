@@ -1,4 +1,6 @@
 @import 'tailwindcss';
+/* компоненты лежат в libs/ui: Tailwind ищет классы и там (SD-08, п. 4) */
+@source '../../../../libs/ui/src';
 
 @theme {
   --color-brand-50: #f5f3ff;

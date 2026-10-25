@@ -1,6 +1,6 @@
 import type { CategoryNode } from '@repo/contracts';
 import Link from 'next/link';
-import { cn } from '../../components/ui/cn';
+import { cn } from '@repo/ui';
 
 /** Дерево категорий: ссылка сохраняет запрос и фильтры, меняет только категорию. */
 export function CategoryNav({

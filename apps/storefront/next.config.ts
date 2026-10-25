@@ -10,7 +10,7 @@ const config: NextConfig = {
   output: 'standalone',
   outputFileTracingRoot: root,
   turbopack: { root },
-  transpilePackages: ['@repo/contracts'],
+  transpilePackages: ['@repo/contracts', '@repo/ui', '@repo/web-session'],
   // OpenTelemetry и pino загружаются из node_modules как есть: бандлер ломает их хуки
   serverExternalPackages: [
     '@opentelemetry/sdk-node',

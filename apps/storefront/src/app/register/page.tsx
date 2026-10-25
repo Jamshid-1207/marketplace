@@ -1,5 +1,5 @@
 import { SessionForm } from '../../features/session/SessionForm';
-import { safeNext } from '../../server/safe-next';
+import { safeNext } from '@repo/web-session';
 
 type Props = { searchParams: Promise<{ next?: string }> };
 

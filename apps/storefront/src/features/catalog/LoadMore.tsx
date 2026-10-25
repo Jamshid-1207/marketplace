@@ -3,7 +3,7 @@
 import { SearchResponse, type SearchHit } from '@repo/contracts';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
-import { Button } from '../../components/ui/button';
+import { Button } from '@repo/ui';
 import { ProductTile } from './ProductTile';
 
 /** «Показать ещё» (SD-07, п. 3.2): следующая страница по курсору — через `/bff/search`. */

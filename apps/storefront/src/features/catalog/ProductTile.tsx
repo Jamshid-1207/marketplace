@@ -1,8 +1,7 @@
 import { formatSum, type SearchHit } from '@repo/contracts';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { Badge } from '../../components/ui/badge';
-import { ProductImage } from '../../components/ui/placeholder';
+import { Badge, ProductImage } from '@repo/ui';
 
 /** Товар в выдаче: и в серверной странице, и в подгрузке «Показать ещё». */
 export function ProductTile({ hit }: { hit: SearchHit }) {

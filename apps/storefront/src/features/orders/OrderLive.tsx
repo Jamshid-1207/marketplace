@@ -4,9 +4,7 @@ import { formatSum, OrderView } from '@repo/contracts';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { useEffect, useRef, useState, useTransition } from 'react';
-import { Badge } from '../../components/ui/badge';
-import { Button, buttonVariants } from '../../components/ui/button';
-import { Card } from '../../components/ui/card';
+import { Badge, Button, buttonVariants, Card } from '@repo/ui';
 import { cancelSubOrder } from './actions';
 import { canCancel, orderNumber, shouldPoll, shouldRedirectToPayment } from './status';
 

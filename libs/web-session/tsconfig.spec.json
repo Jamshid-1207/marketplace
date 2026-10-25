@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./out-tsc/jest",
+    "experimentalDecorators": false,
+    "emitDecoratorMetadata": false,
+    "lib": ["es2024", "dom"],
+    "types": ["jest", "node"]
+  },
+  "include": ["src/**/*.spec.ts", "src/testing/**/*.ts"],
+  "references": [{ "path": "./tsconfig.lib.json" }]
+}

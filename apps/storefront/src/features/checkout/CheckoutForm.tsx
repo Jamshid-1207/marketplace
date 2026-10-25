@@ -4,9 +4,7 @@ import { formatSum } from '@repo/contracts';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useState, useTransition, type FormEvent } from 'react';
-import { Button } from '../../components/ui/button';
-import { Card } from '../../components/ui/card';
-import { Input } from '../../components/ui/input';
+import { Button, Card, Input, useHydrated } from '@repo/ui';
 import type { CartItem } from '../cart/items';
 import { placeOrder, type PlaceOrderResult } from './actions';
 import { normalizePhone } from './phone';
@@ -24,6 +22,7 @@ export function CheckoutForm({ items, total }: { items: CartItem[]; total: numbe
   const [key, setKey] = useState(() => crypto.randomUUID());
   const [error, setError] = useState<CheckoutError | null>(null);
   const [pending, start] = useTransition();
+  const hydrated = useHydrated();
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -90,7 +89,7 @@ export function CheckoutForm({ items, total }: { items: CartItem[]; total: numbe
             {t(error)}
           </p>
         )}
-        <Button type="submit" size="lg" className="w-full" disabled={pending}>
+        <Button type="submit" size="lg" className="w-full" disabled={pending || !hydrated}>
           {pending ? t('paying') : t('pay', { total: formatSum(total) })}
         </Button>
       </Card>

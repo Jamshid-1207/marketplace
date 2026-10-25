@@ -1,9 +1,7 @@
 import { CategoryTree, SearchResponse } from '@repo/contracts';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
-import { Button } from '../components/ui/button';
-import { Card } from '../components/ui/card';
-import { Input } from '../components/ui/input';
+import { Button, Card, Input } from '@repo/ui';
 import { CategoryNav } from '../features/catalog/CategoryNav';
 import { LoadMore } from '../features/catalog/LoadMore';
 import { ProductTile } from '../features/catalog/ProductTile';

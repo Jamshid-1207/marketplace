@@ -5,11 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useTransition } from 'react';
-import { Badge } from '../../components/ui/badge';
-import { Button, buttonVariants } from '../../components/ui/button';
-import { Card } from '../../components/ui/card';
-import { cn } from '../../components/ui/cn';
-import { ProductImage } from '../../components/ui/placeholder';
+import { Badge, Button, buttonVariants, Card, cn, ProductImage } from '@repo/ui';
 import { removeFromCart, setCartQty } from './actions';
 import { cartTotal, type CartItem } from './items';
 

@@ -4,9 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useState, useTransition, type FormEvent } from 'react';
-import { Button } from '../../components/ui/button';
-import { Card } from '../../components/ui/card';
-import { Input } from '../../components/ui/input';
+import { Button, Card, Input, useHydrated } from '@repo/ui';
 import { loadGuestCart, saveGuestCart } from '../cart/guest-cart';
 import { login, register, type SessionError } from './actions';
 
@@ -19,6 +17,7 @@ export function SessionForm({ mode, next }: { mode: 'login' | 'register'; next: 
   const router = useRouter();
   const [error, setError] = useState<SessionError | null>(null);
   const [pending, start] = useTransition();
+  const hydrated = useHydrated();
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -67,7 +66,7 @@ export function SessionForm({ mode, next }: { mode: 'login' | 'register'; next: 
             {t(error)}
           </p>
         )}
-        <Button type="submit" className="w-full" disabled={pending}>
+        <Button type="submit" className="w-full" disabled={pending || !hydrated}>
           {mode === 'login' ? t('submitLogin') : t('submitRegister')}
         </Button>
       </form>
