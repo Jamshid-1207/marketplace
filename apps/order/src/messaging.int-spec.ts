@@ -71,6 +71,11 @@ describe('order: шина и health (интеграция)', () => {
     await eventually(() => handler.handled.includes(envelope.eventId), {
       what: 'обработчик получил событие',
     });
+    // обработчик вызывается внутри транзакции с отметкой в processed_events: ждём её коммит
+    await eventually(
+      async () => (await prisma.processedEvent.count({ where: { handler: HANDLER } })) > 0,
+      { what: 'отметка обработки' },
+    );
     expect(await prisma.processedEvent.count({ where: { handler: HANDLER } })).toBe(1);
     const row = await prisma.outbox.findUniqueOrThrow({ where: { eventId: envelope.eventId } });
     expect(row.publishedAt).not.toBeNull();
