@@ -3,6 +3,10 @@
 Все изменения проекта. Формат: [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/), версии по этапам.
 Типы: **Added**, **Changed**, **Fixed**, **Removed**, **Decided** (архитектурные решения).
 
+## [Unreleased] · Этап 9: Hardening
+### Added
+- `docs/system-design/09-hardening.md`: дизайн этапа 9 — целевые показатели нагрузки на CI-раннере (каталог, оформление, кабинет, lag событий), нагрузочные сценарии k6 и отдельный workflow `load`, метрики OpenTelemetry → Collector → Prometheus, Grafana с дашбордами из репозитория, RLS на таблицах продавца в catalog, erp, order, payment и crm с отказом по умолчанию; 8 сценариев готовности. На согласовании.
+
 ## [0.9.0] - 2026-10-25 · Этап 8: Backoffice ✅
 Критерии SD-08 выполнены: сценарии кабинета и админки в браузере (Playwright, 9) и витрины (5), а также Jest-сценарии этапов 2–7 (47) проходят в job `e2e` на стенде с профилем `full`, интеграционные тесты сервисов — в `integration`, все пять job'ов CI зелёные.
 
