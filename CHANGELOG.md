@@ -5,6 +5,11 @@
 
 ## [Unreleased] · Этап 8: Backoffice
 ### Added
+- **Шаг 2: контракты API кабинета и админки** (SD-08, п. 5, решение 6).
+  - `libs/contracts/src/api/`: `auth/staff.ts` (роли, права, сотрудники), `catalog/cabinet.ts` (магазин, решения модерации, товар продавца, SKU, категории), `erp/cabinet.ts` (склады, остатки, пороги, корректировки, сводка продаж), `order/seller.ts` (под-заказы продавца с курсором, действия), `payment/finance.ts` (баланс, операции, сводка, выплаты, ставки комиссии, отчёт, сверка журнала), `crm/customers.ts` (покупатели, профиль, отчёт по сегментам).
+  - `Role` и `SellerPermission` — в контрактах; `libs/auth` берёт их оттуда: их читают и фронты.
+  - Сервисы разбирают тела и запросы кабинета схемами контрактов вместо своих, ответы типизированы ими: auth, catalog, erp, order, payment, crm. Баланс продавца в payment отдаёт `minPayoutMinor` и `holdMs` — правила выплаты, которые кабинет показывает (решение 8).
+  - Тесты: схемы API кабинета (8), всего в контрактах — 107, покрытие ≥ 80 %; интеграционный тест payment — новые поля баланса.
 - **Шаг 1: общий код фронтов** (SD-08, п. 4, решение 2).
   - `libs/ui` (`type:ui`, `platform:web`): `Button`, `Input`, `Card`, `Badge`, `ProductImage`, `cn`, `useHydrated` — компоненты витрины переехали сюда; стили — Tailwind приложения (`@source` на `libs/ui/src`).
   - `libs/web-session` (`type:infra`, `platform:web`): срок access-токена, одно обновление на refresh-токен (`RefreshCoordinator`), cookie сессии с именами приложения, `safeNext`, фабрика middleware `createSessionProxy` — в `@repo/web-session`, его можно импортировать в middleware; клиент gateway `createGateway` и сессия `createSession` (в том числе `refreshNow` — новая пара токенов прямо в Server Action) — в `@repo/web-session/server` с `server-only`. `next` — peer-зависимость: версия одна на монорепо.

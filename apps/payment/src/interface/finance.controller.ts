@@ -13,8 +13,23 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { Admin, CurrentSeller, SellerScope, type SellerAccess } from '@repo/auth';
+import {
+  CommissionRateRequest,
+  CommissionReportQuery,
+  PayoutRequest,
+  SellerOperationsQuery,
+  type CommissionRate,
+  type CommissionReport,
+  type FinanceSummary,
+  type LedgerCheck,
+  type PayoutRequested,
+  type PayoutView,
+  type SellerBalance,
+  type SellerOperations,
+} from '@repo/contracts';
 import { z } from 'zod';
 import type { FinanceReader } from '../application/finance';
+import { CONFIG, type Config } from '../config';
 import {
   InsufficientFundsError,
   PayoutService,
@@ -22,16 +37,6 @@ import {
 } from '../application/payout.service';
 
 export const FINANCE_READER = Symbol('FINANCE_READER');
-
-const OperationsQuery = z.object({
-  cursor: z.string().regex(/^\d+$/).optional(),
-  limit: z.coerce.number().int().min(1).max(100).default(50),
-});
-const PayoutBody = z.object({
-  amountMinor: z.number().int().positive().refine(Number.isSafeInteger),
-});
-const RateBody = z.object({ rateBp: z.number().int().min(0).max(10_000) });
-const Period = z.object({ from: z.iso.datetime(), to: z.iso.datetime() });
 
 function parse<T>(schema: z.ZodType<T>, value: unknown): T {
   const result = schema.safeParse(value);
@@ -45,38 +50,50 @@ export class SellerFinanceController {
   constructor(
     @Inject(FINANCE_READER) private readonly finance: FinanceReader,
     private readonly payouts: PayoutService,
+    @Inject(CONFIG) private readonly config: Config,
   ) {}
 
   @Get('finance/balance')
   @SellerScope('finance')
-  balance(@CurrentSeller() seller: SellerAccess) {
-    return this.finance.balance(seller.sellerId);
+  /** Баланс и правила выплат: минимальная сумма и срок удержания (SD-08, решение 8). */
+  async balance(@CurrentSeller() seller: SellerAccess): Promise<SellerBalance> {
+    return {
+      ...(await this.finance.balance(seller.sellerId)),
+      minPayoutMinor: this.config.MIN_PAYOUT_MINOR,
+      holdMs: this.config.SELLER_HOLD_MS,
+    };
   }
 
   @Get('finance/operations')
   @SellerScope('finance')
-  async operations(@CurrentSeller() seller: SellerAccess, @Query() query: unknown) {
-    const { cursor, limit } = parse(OperationsQuery, query);
+  async operations(
+    @CurrentSeller() seller: SellerAccess,
+    @Query() query: unknown,
+  ): Promise<SellerOperations> {
+    const { cursor, limit } = parse(SellerOperationsQuery, query);
     const items = await this.finance.operations(seller.sellerId, { before: cursor ?? null, limit });
     return { items, nextCursor: items.length === limit ? (items.at(-1)?.entryId ?? null) : null };
   }
 
   @Get('finance/summary')
   @SellerScope('finance')
-  summary(@CurrentSeller() seller: SellerAccess) {
+  summary(@CurrentSeller() seller: SellerAccess): Promise<FinanceSummary> {
     return this.finance.summary(seller.sellerId);
   }
 
   @Get('payouts')
   @SellerScope('finance')
-  list(@CurrentSeller() seller: SellerAccess) {
+  list(@CurrentSeller() seller: SellerAccess): Promise<PayoutView[]> {
     return this.finance.payouts(seller.sellerId);
   }
 
   @Post('payouts')
   @SellerScope('finance')
-  async request(@CurrentSeller() seller: SellerAccess, @Body() body: unknown) {
-    const { amountMinor } = parse(PayoutBody, body);
+  async request(
+    @CurrentSeller() seller: SellerAccess,
+    @Body() body: unknown,
+  ): Promise<PayoutRequested> {
+    const { amountMinor } = parse(PayoutRequest, body);
     try {
       const payout = await this.payouts.request(seller.sellerId, amountMinor);
       return { payoutId: payout.payoutId, amountMinor, status: payout.status };
@@ -97,16 +114,19 @@ export class AdminFinanceController {
   constructor(@Inject(FINANCE_READER) private readonly finance: FinanceReader) {}
 
   @Get('commission-rates')
-  rates() {
+  rates(): Promise<CommissionRate[]> {
     return this.finance.rates();
   }
 
   @Put('commission-rates/:categoryId')
-  async setRate(@Param('categoryId') categoryId: string, @Body() body: unknown) {
+  async setRate(
+    @Param('categoryId') categoryId: string,
+    @Body() body: unknown,
+  ): Promise<CommissionRate> {
     if (categoryId !== '*' && !z.uuid().safeParse(categoryId).success) {
       throw new NotFoundException('категория не найдена');
     }
-    const { rateBp } = parse(RateBody, body);
+    const { rateBp } = parse(CommissionRateRequest, body);
     if (!(await this.finance.setRate(categoryId, rateBp))) {
       throw new NotFoundException('категория не найдена');
     }
@@ -114,13 +134,13 @@ export class AdminFinanceController {
   }
 
   @Get('reports/commission')
-  report(@Query() query: unknown) {
-    const { from, to } = parse(Period, query);
+  report(@Query() query: unknown): Promise<CommissionReport> {
+    const { from, to } = parse(CommissionReportQuery, query);
     return this.finance.commissionReport(new Date(from), new Date(to));
   }
 
   @Get('ledger/check')
-  check() {
+  check(): Promise<LedgerCheck> {
     return this.finance.checkLedger();
   }
 }

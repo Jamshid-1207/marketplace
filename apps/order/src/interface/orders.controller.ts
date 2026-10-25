@@ -18,6 +18,7 @@ import {
   type CreateOrderResponse,
   type OrderListResponse,
   type OrderView,
+  type SubOrderActionResponse,
 } from '@repo/contracts';
 import { z } from 'zod';
 import { CheckoutService } from '../application/checkout.service';
@@ -49,7 +50,7 @@ export class OrdersController {
     @BuyerScope() buyer: Buyer,
     @Param('orderId', new ParseUUIDPipe()) orderId: string,
     @Param('id', new ParseUUIDPipe()) subOrderId: string,
-  ) {
+  ): Promise<SubOrderActionResponse> {
     return subOrderHttp(() =>
       this.subOrders.act({ kind: 'buyer', userId: buyer.userId }, subOrderId, 'cancel', orderId),
     );

@@ -30,9 +30,3 @@ export async function http<T>(fn: () => Promise<T>): Promise<T> {
     throw error;
   }
 }
-
-export const PriceMinor = z
-  .number()
-  .int()
-  .positive()
-  .refine(Number.isSafeInteger, 'цена вне диапазона');

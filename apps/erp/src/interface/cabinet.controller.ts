@@ -13,24 +13,17 @@ import {
   Put,
 } from '@nestjs/common';
 import { CurrentSeller, SellerScope, type SellerAccess } from '@repo/auth';
+import {
+  StockAdjustmentRequest,
+  ThresholdRequest,
+  WarehouseChanges,
+  WarehouseRequest,
+  type StockLevels,
+  type StockView,
+  type WarehouseView,
+} from '@repo/contracts';
 import { z } from 'zod';
 import { CabinetService, ConflictError, NotFoundError } from '../application/cabinet.service';
-
-const WarehouseBody = z.object({
-  name: z.string().trim().min(1).max(100),
-  priority: z.number().int().min(1).max(1_000),
-});
-const WarehouseChanges = WarehouseBody.extend({ active: z.boolean() }).partial();
-const AdjustmentBody = z.object({
-  warehouseId: z.uuid(),
-  skuId: z.uuid(),
-  delta: z
-    .number()
-    .int()
-    .refine((d) => d !== 0, 'delta не может быть 0'),
-  reason: z.string().trim().min(1).max(200),
-});
-const ThresholdBody = z.object({ threshold: z.number().int().min(1).max(1_000_000) });
 
 function parse<T>(schema: z.ZodType<T>, body: unknown): T {
   const result = schema.safeParse(body);
@@ -56,14 +49,17 @@ export class CabinetController {
 
   @Get('warehouses')
   @SellerScope('warehouse')
-  warehouses(@CurrentSeller() seller: SellerAccess) {
+  warehouses(@CurrentSeller() seller: SellerAccess): Promise<WarehouseView[]> {
     return this.cabinet.warehouses(seller);
   }
 
   @Post('warehouses')
   @SellerScope('warehouse')
-  createWarehouse(@CurrentSeller() seller: SellerAccess, @Body() body: unknown) {
-    return http(() => this.cabinet.createWarehouse(seller, parse(WarehouseBody, body)));
+  createWarehouse(
+    @CurrentSeller() seller: SellerAccess,
+    @Body() body: unknown,
+  ): Promise<WarehouseView> {
+    return http(() => this.cabinet.createWarehouse(seller, parse(WarehouseRequest, body)));
   }
 
   @Patch('warehouses/:id')
@@ -72,7 +68,7 @@ export class CabinetController {
     @CurrentSeller() seller: SellerAccess,
     @Param('id', new ParseUUIDPipe()) warehouseId: string,
     @Body() body: unknown,
-  ) {
+  ): Promise<WarehouseView> {
     return http(() =>
       this.cabinet.updateWarehouse(seller, warehouseId, parse(WarehouseChanges, body)),
     );
@@ -80,14 +76,14 @@ export class CabinetController {
 
   @Get('stock')
   @SellerScope('warehouse')
-  stock(@CurrentSeller() seller: SellerAccess) {
+  stock(@CurrentSeller() seller: SellerAccess): Promise<StockLevels> {
     return this.cabinet.stockLevels(seller);
   }
 
   @Post('stock/adjustments')
   @SellerScope('warehouse')
-  adjust(@CurrentSeller() seller: SellerAccess, @Body() body: unknown) {
-    const { warehouseId, skuId, delta } = parse(AdjustmentBody, body);
+  adjust(@CurrentSeller() seller: SellerAccess, @Body() body: unknown): Promise<StockView> {
+    const { warehouseId, skuId, delta } = parse(StockAdjustmentRequest, body);
     return http(() => this.cabinet.adjust(seller, { warehouseId, skuId, delta }));
   }
 
@@ -99,7 +95,7 @@ export class CabinetController {
     @Param('skuId', new ParseUUIDPipe()) skuId: string,
     @Body() body: unknown,
   ): Promise<void> {
-    const { threshold } = parse(ThresholdBody, body);
+    const { threshold } = parse(ThresholdRequest, body);
     await http(() => this.cabinet.setThreshold(seller, skuId, threshold));
   }
 }

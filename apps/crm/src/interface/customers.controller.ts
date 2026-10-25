@@ -8,17 +8,10 @@ import {
   Query,
 } from '@nestjs/common';
 import { Admin, CurrentSeller, SellerScope, type SellerAccess } from '@repo/auth';
+import { AdminCustomersQuery, CustomersQuery, type SegmentReport } from '@repo/contracts';
 import { z } from 'zod';
 import { CustomersService } from '../application/customers.service';
 import type { Scope } from '../application/ports';
-import { SEGMENTS } from '../domain/segment';
-
-const ListQuery = z.object({
-  segment: z.enum(SEGMENTS).optional(),
-  cursor: z.uuid().optional(),
-  limit: z.coerce.number().int().min(1).max(100).default(50),
-});
-const AdminListQuery = ListQuery.extend({ email: z.string().max(254).optional() });
 
 function parse<T>(schema: z.ZodType<T>, value: unknown): T {
   const result = schema.safeParse(value);
@@ -43,7 +36,7 @@ export class SellerCustomersController {
   list(@CurrentSeller() seller: SellerAccess, @Query() query: unknown) {
     return this.customers.list(
       { kind: 'seller', sellerId: seller.sellerId },
-      parse(ListQuery, query),
+      parse(CustomersQuery, query),
     );
   }
 
@@ -65,7 +58,7 @@ export class AdminCustomersController {
 
   @Get('customers')
   list(@Query() query: unknown) {
-    return this.customers.list({ kind: 'platform' }, parse(AdminListQuery, query));
+    return this.customers.list({ kind: 'platform' }, parse(AdminCustomersQuery, query));
   }
 
   @Get('customers/:buyerId')
@@ -74,7 +67,7 @@ export class AdminCustomersController {
   }
 
   @Get('reports/segments')
-  segments() {
+  segments(): Promise<SegmentReport> {
     return this.customers.segments();
   }
 }

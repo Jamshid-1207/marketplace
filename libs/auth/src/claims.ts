@@ -1,19 +1,9 @@
 import { z } from 'zod';
 
-/** Роли (ТЗ, 3.1; ADR-0006, п. 2). */
-export const Role = z.enum(['buyer', 'seller', 'seller_manager', 'admin']);
-export type Role = z.infer<typeof Role>;
+import { Role, SellerPermission } from '@repo/contracts';
 
-/** Права сотрудника магазина (ADR-0006, п. 2). `staff` — только у владельца. */
-export const SellerPermission = z.enum([
-  'catalog',
-  'warehouse',
-  'orders',
-  'support',
-  'finance',
-  'staff',
-]);
-export type SellerPermission = z.infer<typeof SellerPermission>;
+// роли и права — в контрактах: их читают и фронты (SD-08, п. 5)
+export { Role, SellerPermission };
 
 /** Claims access-токена (ADR-0006, п. 3). */
 export const Claims = z.object({

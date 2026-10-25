@@ -11,40 +11,16 @@ import {
   Post,
 } from '@nestjs/common';
 import { CurrentSeller, SellerScope, type SellerAccess } from '@repo/auth';
-import { z } from 'zod';
+import {
+  ProductContentChanges,
+  ProductContentRequest,
+  SkuChanges,
+  SkuRequest,
+  type CabinetProduct,
+} from '@repo/contracts';
 import { ProductsService } from '../application/products.service';
 import { PrismaCatalogReader } from '../infrastructure/prisma-catalog.reader';
-import { http, parse, PriceMinor } from './http';
-
-const Content = z.object({
-  title: z.string().trim().min(2).max(300),
-  description: z.string().trim().max(10_000).default(''),
-  categoryId: z.uuid(),
-  images: z.array(z.url().max(500)).max(10).default([]),
-});
-const ContentChanges = z
-  .object({
-    title: z.string().trim().min(2).max(300),
-    description: z.string().trim().max(10_000),
-    categoryId: z.uuid(),
-    images: z.array(z.url().max(500)).max(10),
-  })
-  .partial();
-const Attributes = z.record(z.string().max(50), z.string().max(200)).default({});
-const SkuBody = z.object({
-  skuCode: z.string().trim().min(1).max(100),
-  attributes: Attributes,
-  priceMinor: PriceMinor,
-  active: z.boolean().default(true),
-});
-const SkuChanges = z
-  .object({
-    skuCode: z.string().trim().min(1).max(100),
-    attributes: z.record(z.string().max(50), z.string().max(200)),
-    priceMinor: PriceMinor,
-    active: z.boolean(),
-  })
-  .partial();
+import { http, parse } from './http';
 
 const uuid = () => new ParseUUIDPipe();
 
@@ -58,13 +34,16 @@ export class SellerProductsController {
 
   @Get()
   @SellerScope('catalog')
-  list(@CurrentSeller() seller: SellerAccess) {
+  list(@CurrentSeller() seller: SellerAccess): Promise<CabinetProduct[]> {
     return this.reader.products({ sellerId: seller.sellerId });
   }
 
   @Get(':id')
   @SellerScope('catalog')
-  async get(@CurrentSeller() seller: SellerAccess, @Param('id', uuid()) productId: string) {
+  async get(
+    @CurrentSeller() seller: SellerAccess,
+    @Param('id', uuid()) productId: string,
+  ): Promise<CabinetProduct> {
     const [product] = await this.reader.products({ sellerId: seller.sellerId, productId });
     if (!product) throw new NotFoundException('товар не найден');
     return product;
@@ -72,8 +51,8 @@ export class SellerProductsController {
 
   @Post()
   @SellerScope('catalog')
-  create(@CurrentSeller() seller: SellerAccess, @Body() body: unknown) {
-    return http(() => this.products.create(seller, parse(Content, body)));
+  create(@CurrentSeller() seller: SellerAccess, @Body() body: unknown): Promise<CabinetProduct> {
+    return http(() => this.products.create(seller, parse(ProductContentRequest, body)));
   }
 
   @Patch(':id')
@@ -82,8 +61,8 @@ export class SellerProductsController {
     @CurrentSeller() seller: SellerAccess,
     @Param('id', uuid()) productId: string,
     @Body() body: unknown,
-  ) {
-    return http(() => this.products.update(seller, productId, parse(ContentChanges, body)));
+  ): Promise<CabinetProduct> {
+    return http(() => this.products.update(seller, productId, parse(ProductContentChanges, body)));
   }
 
   @Post(':id/skus')
@@ -92,8 +71,8 @@ export class SellerProductsController {
     @CurrentSeller() seller: SellerAccess,
     @Param('id', uuid()) productId: string,
     @Body() body: unknown,
-  ) {
-    return http(() => this.products.addSku(seller, productId, parse(SkuBody, body)));
+  ): Promise<CabinetProduct> {
+    return http(() => this.products.addSku(seller, productId, parse(SkuRequest, body)));
   }
 
   @Patch(':id/skus/:skuId')
@@ -103,7 +82,7 @@ export class SellerProductsController {
     @Param('id', uuid()) productId: string,
     @Param('skuId', uuid()) skuId: string,
     @Body() body: unknown,
-  ) {
+  ): Promise<CabinetProduct> {
     return http(() => this.products.updateSku(seller, productId, skuId, parse(SkuChanges, body)));
   }
 
@@ -113,21 +92,27 @@ export class SellerProductsController {
     @CurrentSeller() seller: SellerAccess,
     @Param('id', uuid()) productId: string,
     @Param('skuId', uuid()) skuId: string,
-  ) {
+  ): Promise<CabinetProduct> {
     return http(() => this.products.removeSku(seller, productId, skuId));
   }
 
   @Post(':id/submit')
   @HttpCode(200)
   @SellerScope('catalog')
-  submit(@CurrentSeller() seller: SellerAccess, @Param('id', uuid()) productId: string) {
+  submit(
+    @CurrentSeller() seller: SellerAccess,
+    @Param('id', uuid()) productId: string,
+  ): Promise<CabinetProduct> {
     return http(() => this.products.submit(seller, productId));
   }
 
   @Post(':id/archive')
   @HttpCode(200)
   @SellerScope('catalog')
-  archive(@CurrentSeller() seller: SellerAccess, @Param('id', uuid()) productId: string) {
+  archive(
+    @CurrentSeller() seller: SellerAccess,
+    @Param('id', uuid()) productId: string,
+  ): Promise<CabinetProduct> {
     return http(() => this.products.archive(seller, productId));
   }
 }

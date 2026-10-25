@@ -6,11 +6,9 @@ import {
   type Claims,
   type SellerAccess,
 } from '@repo/auth';
-import { z } from 'zod';
+import { RegisterShopRequest, type ShopView } from '@repo/contracts';
 import { SellersService } from '../application/sellers.service';
 import { http, parse } from './http';
-
-const RegisterBody = z.object({ name: z.string().trim().min(2).max(200) });
 
 /** Регистрация магазина и его статус в кабинете (SD-05, п. 6.2). */
 @Controller()
@@ -19,13 +17,13 @@ export class SellersController {
 
   /** Любой вошедший пользователь без магазина. Роль `seller` появится после обновления токена. */
   @Post('sellers')
-  register(@CurrentClaims() claims: Claims, @Body() body: unknown) {
-    return http(() => this.sellers.register(claims, parse(RegisterBody, body).name));
+  register(@CurrentClaims() claims: Claims, @Body() body: unknown): Promise<ShopView> {
+    return http(() => this.sellers.register(claims, parse(RegisterShopRequest, body).name));
   }
 
   @Get('seller/shop')
   @SellerScope('catalog')
-  shop(@CurrentSeller() seller: SellerAccess) {
+  shop(@CurrentSeller() seller: SellerAccess): Promise<ShopView> {
     return http(() => this.sellers.shop(seller.sellerId));
   }
 }

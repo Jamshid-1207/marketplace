@@ -231,7 +231,14 @@ describe('payment: деньги (интеграция)', () => {
         .get('/seller/finance/balance')
         .set('Authorization', owner)
         .expect(200);
-      expect(balance.body).toEqual({ pendingMinor: 950_000, availableMinor: 0, inPayoutMinor: 0 });
+      // правила выплат — из конфига теста (SD-08, решение 8)
+      expect(balance.body).toEqual({
+        pendingMinor: 950_000,
+        availableMinor: 0,
+        inPayoutMinor: 0,
+        minPayoutMinor: 1_000,
+        holdMs: 60 * 60_000,
+      });
       const ops = await http()
         .get('/seller/finance/operations')
         .set('Authorization', owner)
@@ -249,7 +256,7 @@ describe('payment: деньги (интеграция)', () => {
         .get('/seller/finance/balance')
         .set('Authorization', other)
         .expect(200);
-      expect(foreign.body).toEqual({ pendingMinor: 0, availableMinor: 0, inPayoutMinor: 0 });
+      expect(foreign.body).toMatchObject({ pendingMinor: 0, availableMinor: 0, inPayoutMinor: 0 });
     });
 
     it('админ меняет ставку категории — новые списания по ней; не-админ — 403', async () => {

@@ -9,14 +9,10 @@ import {
   Post,
   Put,
 } from '@nestjs/common';
-import { CurrentSeller, SellerPermission, SellerScope, type SellerAccess } from '@repo/auth';
-import { z } from 'zod';
+import { CurrentSeller, SellerScope, type SellerAccess } from '@repo/auth';
+import { HireStaffRequest, StaffScopesRequest, type StaffMember } from '@repo/contracts';
 import { StaffService } from '../application/staff.service';
 import { http, parse } from './http';
-
-const Scopes = z.array(SellerPermission).min(1).max(SellerPermission.options.length);
-const HireBody = z.object({ email: z.email().max(254), scopes: Scopes });
-const ScopesBody = z.object({ scopes: Scopes });
 
 /** Сотрудники магазина (SD-05, п. 5.3): право `staff` есть только у владельца. */
 @Controller('seller/staff')
@@ -25,14 +21,14 @@ export class StaffController {
 
   @Get()
   @SellerScope('staff')
-  list(@CurrentSeller() seller: SellerAccess) {
+  list(@CurrentSeller() seller: SellerAccess): Promise<StaffMember[]> {
     return this.staff.list(seller);
   }
 
   @Post()
   @SellerScope('staff')
-  add(@CurrentSeller() seller: SellerAccess, @Body() body: unknown) {
-    return http(() => this.staff.add(seller, parse(HireBody, body)));
+  add(@CurrentSeller() seller: SellerAccess, @Body() body: unknown): Promise<StaffMember> {
+    return http(() => this.staff.add(seller, parse(HireStaffRequest, body)));
   }
 
   @Put(':userId')
@@ -41,8 +37,8 @@ export class StaffController {
     @CurrentSeller() seller: SellerAccess,
     @Param('userId', new ParseUUIDPipe()) userId: string,
     @Body() body: unknown,
-  ) {
-    return http(() => this.staff.update(seller, userId, parse(ScopesBody, body).scopes));
+  ): Promise<StaffMember> {
+    return http(() => this.staff.update(seller, userId, parse(StaffScopesRequest, body).scopes));
   }
 
   @Delete(':userId')

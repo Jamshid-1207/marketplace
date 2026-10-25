@@ -1,6 +1,6 @@
 import { Controller, Get } from '@nestjs/common';
 import { CurrentSeller, SellerScope, type SellerAccess } from '@repo/auth';
-import { toSafeNumber } from '@repo/contracts';
+import { toSafeNumber, type SalesSummary } from '@repo/contracts';
 import { PrismaService } from '../infrastructure/prisma.service';
 
 /**
@@ -13,7 +13,7 @@ export class SalesController {
 
   @Get('summary')
   @SellerScope('finance')
-  async summary(@CurrentSeller() seller: SellerAccess) {
+  async summary(@CurrentSeller() seller: SellerAccess): Promise<SalesSummary> {
     const result = await this.prisma.sale.aggregate({
       where: { sellerId: seller.sellerId, reversedAt: null },
       _sum: { amountMinor: true },
