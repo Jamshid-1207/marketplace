@@ -1,0 +1,39 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // Next.js собирает сам: tsc только проверяет типы
+    "composite": false,
+    "declarationMap": false,
+    "emitDeclarationOnly": false,
+    "noEmit": true,
+    "experimentalDecorators": false,
+    "emitDecoratorMetadata": false,
+    "lib": ["dom", "dom.iterable", "es2024"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "types": ["node", "jest"],
+    "plugins": [{ "name": "next" }]
+  },
+  "include": [
+    "next-env.d.ts",
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    ".next/types/**/*.ts",
+    ".next/dev/types/**/*.ts"
+  ],
+  "exclude": ["node_modules", ".next"],
+  "references": [
+    {
+      "path": "../../libs/web-session"
+    },
+    {
+      "path": "../../libs/ui"
+    },
+    {
+      "path": "../../libs/contracts"
+    }
+  ]
+}

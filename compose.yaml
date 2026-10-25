@@ -305,8 +305,9 @@ services:
       CATALOG_URL: http://catalog:3000
       CRM_URL: http://crm:3000
       JWKS_URL: http://auth:3000/.well-known/jwks.json
-      # X-Forwarded-For принимается только от storefront: лимит гостей — по их адресам (SD-07, решение 9)
-      TRUST_PROXY: 172.30.240.200
+      # X-Forwarded-For принимается только от фронтов — storefront и backoffice: лимит гостей —
+      # по адресам пользователей (SD-07, решение 9; SD-08, п. 3.4)
+      TRUST_PROXY: 172.30.240.200,172.30.240.201
     ports:
       - 3000:3000
     healthcheck:
@@ -656,8 +657,44 @@ services:
         limits:
           memory: 512m
 
-# подсеть фиксирована ради адреса storefront; остальные контейнеры получают адреса из нижней
-# половины (ip_range), поэтому .200 никто не займёт раньше витрины
+  # кабинет продавца и админка (SD-08, п. 3.4): профиль full, фиксированный адрес — как у витрины
+  backoffice:
+    profiles:
+      - full
+    build:
+      context: .
+      dockerfile: apps/backoffice/Dockerfile
+      target: runtime
+    restart: unless-stopped
+    environment:
+      GATEWAY_URL: http://gateway:3000
+      PUBLIC_URL: http://localhost:3002
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+    ports:
+      - 3002:3002
+    networks:
+      default:
+        ipv4_address: 172.30.240.201
+    healthcheck:
+      test:
+        - CMD
+        - wget
+        - -qO-
+        - http://127.0.0.1:3002/health/ready
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
+    depends_on:
+      gateway:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+
+# подсеть фиксирована ради адресов фронтов; остальные контейнеры получают адреса из нижней
+# половины (ip_range), поэтому .200 и .201 никто не займёт раньше витрины и кабинета
 networks:
   default:
     ipam:

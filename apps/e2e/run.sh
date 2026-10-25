@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# E2E (SD-02, п. 9–10; SD-07, п. 8): стенд compose (profile full — вместе с витриной) с настройками
-# compose.e2e.yaml → демо-данные в read-моделях → сценарии через gateway (Jest) → сценарии витрины
-# в браузере (Playwright) → логи при ошибке → стенд удаляется.
+# E2E (SD-02, п. 9–10; SD-07, п. 8; SD-08, п. 6): стенд compose (profile full — с витриной и
+# кабинетом) с настройками compose.e2e.yaml → демо-данные в read-моделях → сценарии через gateway
+# (Jest) → сценарии витрины и кабинета в браузере (Playwright) → логи при ошибке → стенд удаляется.
 set -euo pipefail
 
 cd "$(dirname "$0")/../.."
@@ -9,7 +9,7 @@ cd "$(dirname "$0")/../.."
 
 COMPOSE='docker compose -f compose.yaml -f compose.e2e.yaml --profile full'
 compose() { $COMPOSE "$@"; }
-SERVICES=(gateway auth catalog order payment erp crm notification fake-psp storefront)
+SERVICES=(gateway auth catalog order payment erp crm notification fake-psp storefront backoffice)
 
 finish() {
   local status=$?
@@ -67,11 +67,13 @@ until_rows notification_db 'SELECT count(*) FROM shops' 2
 until_rows catalog_db 'SELECT count(*) FROM sku_stock WHERE in_stock' 4
 echo '::endgroup::'
 
-# вход тестовых пользователей — паролем из .env, которым их завёл seed auth
-DEV_USER_PASSWORD="$(sed -n 's/^DEV_USER_PASSWORD=//p' .env)" E2E_COMPOSE="$COMPOSE" \
-  pnpm exec jest --config apps/e2e/jest.e2e.config.cjs
+# вход тестовых пользователей — паролем из .env, которым их завёл seed auth: и в Jest, и в
+# Playwright (кабинет входит под продавцами и админом)
+export DEV_USER_PASSWORD="$(sed -n 's/^DEV_USER_PASSWORD=//p' .env)"
+E2E_COMPOSE="$COMPOSE" pnpm exec jest --config apps/e2e/jest.e2e.config.cjs
 
-# витрина в браузере (SD-07, решение 11): тот же стенд, только Chromium. В CI браузер вместе с
+# витрина и кабинет в браузере (SD-07, решение 11; SD-08, решение 9): тот же стенд, только
+# Chromium. В CI браузер вместе с
 # системными библиотеками ставит шаг workflow; здесь — только браузер, если его ещё нет.
 # Playwright, в отличие от Jest, берёт @repo/contracts из dist: его собирает таргет e2e (dependsOn)
 echo '::group::браузер Playwright'

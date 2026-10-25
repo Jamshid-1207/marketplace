@@ -1,0 +1,91 @@
+{
+  "name": "@repo/backoffice",
+  "version": "0.0.1",
+  "private": true,
+  "nx": {
+    "tags": [
+      "type:app",
+      "platform:web"
+    ],
+    "targets": {
+      "build": {
+        "executor": "nx:run-commands",
+        "options": {
+          "command": "next build",
+          "cwd": "{projectRoot}"
+        },
+        "dependsOn": [
+          "^build"
+        ],
+        "inputs": [
+          "production",
+          "^production"
+        ],
+        "outputs": [
+          "{projectRoot}/.next"
+        ],
+        "cache": false
+      },
+      "typecheck": {
+        "executor": "nx:run-commands",
+        "options": {
+          "command": "tsc --noEmit -p tsconfig.json",
+          "cwd": "{projectRoot}"
+        },
+        "dependsOn": [
+          "^build"
+        ],
+        "cache": true
+      },
+      "dev": {
+        "executor": "nx:run-commands",
+        "continuous": true,
+        "dependsOn": [
+          "^build"
+        ],
+        "options": {
+          "command": "next dev --port 3002",
+          "cwd": "{projectRoot}",
+          "env": {
+            "GATEWAY_URL": "http://localhost:3000",
+            "PUBLIC_URL": "http://localhost:3002",
+            "OTEL_SDK_DISABLED": "true"
+          }
+        }
+      },
+      "serve": {
+        "executor": "nx:run-commands",
+        "continuous": true,
+        "dependsOn": [
+          "build"
+        ],
+        "options": {
+          "command": "next start --port 3002",
+          "cwd": "{projectRoot}"
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "@opentelemetry/api": "1.10.0",
+    "@opentelemetry/exporter-trace-otlp-http": "0.300.0",
+    "@opentelemetry/instrumentation-undici": "0.34.0",
+    "@opentelemetry/sdk-node": "0.300.0",
+    "@repo/contracts": "workspace:*",
+    "@repo/ui": "workspace:*",
+    "@repo/web-session": "workspace:*",
+    "next": "16.4.2",
+    "next-intl": "4.14.9",
+    "pino": "10.4.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "server-only": "0.0.1",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "4.3.3",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "tailwindcss": "4.3.3"
+  }
+}

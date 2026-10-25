@@ -18,7 +18,8 @@
       "@repo/payment",
       "@repo/erp",
       "@repo/fake-psp",
-      "@repo/storefront"
+      "@repo/storefront",
+      "@repo/backoffice"
     ],
     "targets": {
       "e2e": {
