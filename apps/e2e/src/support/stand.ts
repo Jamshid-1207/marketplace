@@ -60,8 +60,8 @@ export async function untilHealthy(service: string): Promise<void> {
   );
 }
 
-/** Сервер закрыл простаивающее keep-alive соединение, а клиент успел его взять: запрос не ушёл. */
-function isStaleConnection(error: unknown): boolean {
+/** Соединение закрылось, не дав ответа: `other side closed` и другие ошибки сокета undici. */
+function isClosedConnection(error: unknown): boolean {
   const cause = (error as { cause?: { code?: string; message?: string } }).cause;
   return (
     error instanceof TypeError &&
@@ -70,24 +70,27 @@ function isStaleConnection(error: unknown): boolean {
 }
 
 /**
- * `fetch` стенда. После `docker compose stop/start` тест простаивает дольше keep-alive сервера,
- * и следующий запрос может попасть на уже закрытый сокет. Такой запрос до сервера не дошёл —
- * повтор безопасен. Закрытых сокетов в пуле может быть несколько (параллельные запросы держат
- * несколько соединений), поэтому повторов — до `STALE_RETRIES`; любая другая ошибка пробрасывается.
- *
- * Перед повтором — пауза: `compose()` блокирует event loop на время `docker compose stop`, и
- * сразу после него пул ещё не обработал закрытие сокетов — повтор без паузы берёт тот же сокет.
+ * `fetch` стенда. Сразу после `docker compose stop` соседнего сервиса соединения с открытыми
+ * портами стенда на CI-раннере закрываются без ответа: `other side closed` — и на простаивавшем
+ * keep-alive сокете, и на новом соединении, до секунд подряд. До сервиса такой запрос не доходит
+ * (в его логах его нет), поэтому он повторяется — с растущей паузой, пока не пройдёт
+ * `CLOSED_RETRY_MS`. Каждый повтор пишется в лог: видно, как долго длится обрыв. Любая другая
+ * ошибка пробрасывается сразу.
  */
-const STALE_RETRIES = 5;
-const STALE_PAUSE_MS = 200;
+const CLOSED_RETRY_MS = 20_000;
 
 export async function standFetch(url: string, init: RequestInit = {}): Promise<Response> {
-  for (let retry = 0; ; retry++) {
+  const deadline = Date.now() + CLOSED_RETRY_MS;
+  for (let attempt = 1; ; attempt++) {
     try {
       return await fetch(url, { ...init, signal: AbortSignal.timeout(15_000) });
     } catch (error) {
-      if (!isStaleConnection(error) || retry >= STALE_RETRIES) throw error;
-      await new Promise((resolve) => setTimeout(resolve, STALE_PAUSE_MS));
+      if (!isClosedConnection(error) || Date.now() >= deadline) throw error;
+      const pause = Math.min(250 * 2 ** (attempt - 1), 2_000);
+      console.warn(
+        `standFetch: ${init.method ?? 'GET'} ${url} — соединение закрыто, повтор через ${pause} мс`,
+      );
+      await new Promise((resolve) => setTimeout(resolve, pause));
     }
   }
 }
