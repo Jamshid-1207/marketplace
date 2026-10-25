@@ -24,6 +24,7 @@
 - **Шаг 1: общий код фронтов** (SD-08, п. 4, решение 2).
   - `libs/ui` (`type:ui`, `platform:web`): `Button`, `Input`, `Card`, `Badge`, `ProductImage`, `cn`, `useHydrated` — компоненты витрины переехали сюда; стили — Tailwind приложения (`@source` на `libs/ui/src`).
   - `libs/web-session` (`type:infra`, `platform:web`): срок access-токена, одно обновление на refresh-токен (`RefreshCoordinator`), cookie сессии с именами приложения, `safeNext`, фабрика middleware `createSessionProxy` — в `@repo/web-session`, его можно импортировать в middleware; клиент gateway `createGateway` и сессия `createSession` (в том числе `refreshNow` — новая пара токенов прямо в Server Action) — в `@repo/web-session/server` с `server-only`. `next` — peer-зависимость: версия одна на монорепо.
+  - Обе libs — ESM (`"type": "module"`, `moduleResolution: bundler`) и отдают бандлеру исходники TypeScript: Next транспилирует их сам (`transpilePackages`), `dist` — только типы. CommonJS-сборка tsc в бандле middleware теряла `require("next/server")` — `ReferenceError: server_1 is not defined` на каждом запросе к обоим фронтам.
   - storefront перешёл на эти libs без изменения поведения: cookie витрины — `sf_access`, `sf_refresh`, задаются в приложении.
   - Кнопки отправки форм витрины неактивны, пока React не подхватил страницу (`useHydrated`): иначе браузер отправил бы форму сам — GET-запросом с паролем или адресом доставки в строке запроса.
   - Тесты: middleware сессии (4) и перенесённые тесты обновления токена — в `libs/web-session` (12); unit-тесты витрины — 13.
