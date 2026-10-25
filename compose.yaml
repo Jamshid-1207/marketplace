@@ -679,6 +679,21 @@ services:
       kafka:
         condition: service_healthy
 
+  # нагрузочный прогон (SD-09, п. 3): apps/load/run.sh. Сценарии — из apps/load, данные и отчёт —
+  # в apps/load/test-output
+  k6:
+    profiles:
+      - tools
+    image: grafana/k6:2.2.0
+    working_dir: /scripts
+    volumes:
+      - ./apps/load:/scripts:ro
+      - ./apps/load/test-output:/out
+    environment:
+      GATEWAY_URL: http://gateway:3000
+      PSP_URL: http://fake-psp:3000
+      DEV_USER_PASSWORD: ${DEV_USER_PASSWORD:-}
+
   # витрина (SD-07, п. 8): только в профиле full, адрес в сети фиксирован — ему доверяет gateway
   storefront:
     profiles:

@@ -652,6 +652,12 @@ importers:
         specifier: ^5.0.6
         version: 5.0.6
 
+  apps/load:
+    dependencies:
+      '@repo/contracts':
+        specifier: workspace:*
+        version: link:../../libs/contracts
+
   apps/notification:
     dependencies:
       '@nestjs/common':

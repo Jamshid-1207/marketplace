@@ -1,0 +1,15 @@
+# Настройки стенда для нагрузочного прогона (SD-09, п. 3): поверх compose.yaml.
+#   docker compose -f compose.yaml -f compose.load.yaml --profile full up -d
+# Запуск целиком — apps/load/run.sh.
+services:
+  gateway:
+    environment:
+      # весь поток идёт от нескольких пользователей и с одного адреса k6
+      RATE_LIMIT_PER_MINUTE: '1000000'
+  # каталог e2e: ожидания run.sh те же, что у e2e (SD-07, решение 12)
+  catalog-migrate:
+    environment:
+      SEED_SHOWCASE: 'false'
+  erp-migrate:
+    environment:
+      SEED_SHOWCASE: 'false'

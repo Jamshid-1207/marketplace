@@ -1,0 +1,32 @@
+{
+  "name": "@repo/load",
+  "version": "0.0.1",
+  "private": true,
+  "type": "commonjs",
+  "nx": {
+    "tags": [
+      "type:e2e",
+      "platform:node"
+    ],
+    "targets": {
+      "load": {
+        "executor": "nx:run-commands",
+        "options": {
+          "command": "bash apps/load/run.sh"
+        },
+        "dependsOn": [
+          {
+            "projects": [
+              "@repo/contracts"
+            ],
+            "target": "build"
+          }
+        ],
+        "cache": false
+      }
+    }
+  },
+  "dependencies": {
+    "@repo/contracts": "workspace:*"
+  }
+}
