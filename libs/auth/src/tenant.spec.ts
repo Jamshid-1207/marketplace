@@ -103,6 +103,15 @@ describe('режим магазина в драйвер-адаптере (SD-09,
   });
 });
 
+describe('runAsTenant', () => {
+  it('ленивый thenable (как запрос Prisma) выполняется в режиме магазина', async () => {
+    // PrismaPromise уходит в базу на then: вызов then снаружи runAsTenant потерял бы режим
+    const lazy = { then: (resolve: (v: unknown) => void) => resolve(currentTenant()) };
+    await expect(runAsTenant(SELLER, () => lazy)).resolves.toEqual({ sellerId: SELLER });
+    expect(runAsTenant(SELLER, () => currentTenant())).toEqual({ sellerId: SELLER });
+  });
+});
+
 describe('TenantInterceptor', () => {
   const context = (sellerScope?: { sellerId: string }) =>
     ({ switchToHttp: () => ({ getRequest: () => ({ sellerScope }) }) }) as ExecutionContext;
