@@ -60,22 +60,22 @@ export async function untilHealthy(service: string): Promise<void> {
   );
 }
 
-/** Соединение закрылось, не дав ответа: `other side closed` и другие ошибки сокета undici. */
+/**
+ * Соединение закрылось, не дав ответа: `other side closed` и другие ошибки сокета undici. Только
+ * по `cause`, без `instanceof TypeError`: Jest запускает тест в своём vm-контексте, а ошибка
+ * встроенного `fetch` — `TypeError` другого realm, и проверка класса всегда ложна.
+ */
 function isClosedConnection(error: unknown): boolean {
-  const cause = (error as { cause?: { code?: string; message?: string } }).cause;
-  return (
-    error instanceof TypeError &&
-    (cause?.code === 'UND_ERR_SOCKET' || /other side closed/.test(cause?.message ?? ''))
-  );
+  const cause = (error as { cause?: { code?: string; message?: string } } | null)?.cause;
+  return cause?.code === 'UND_ERR_SOCKET' || /other side closed/.test(cause?.message ?? '');
 }
 
 /**
- * `fetch` стенда. Сразу после `docker compose stop` соседнего сервиса соединения с открытыми
- * портами стенда на CI-раннере закрываются без ответа: `other side closed` — и на простаивавшем
- * keep-alive сокете, и на новом соединении, до секунд подряд. До сервиса такой запрос не доходит
- * (в его логах его нет), поэтому он повторяется — с растущей паузой, пока не пройдёт
- * `CLOSED_RETRY_MS`. Каждый повтор пишется в лог: видно, как долго длится обрыв. Любая другая
- * ошибка пробрасывается сразу.
+ * `fetch` стенда. После `docker compose stop/start` тест простаивает дольше keep-alive сервера
+ * (`compose()` к тому же блокирует event loop), и следующий запрос попадает на закрытый сокет:
+ * `other side closed`. Такой запрос до сервиса не доходит (в его логах его нет), поэтому он
+ * повторяется — с растущей паузой, пока не пройдёт `CLOSED_RETRY_MS`; каждый повтор пишется в
+ * лог. Любая другая ошибка пробрасывается сразу.
  */
 const CLOSED_RETRY_MS = 20_000;
 

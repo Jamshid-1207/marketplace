@@ -24,7 +24,9 @@ finish() {
 trap finish EXIT
 
 echo '::group::сборка образов'
-compose build "${SERVICES[@]}"
+# crm-replay (профиль tools) запускает сценарий 9 CRM: без готового образа `compose run` собирал
+# бы его посреди теста, и сценарий не укладывался в таймаут
+compose --profile tools build "${SERVICES[@]}" crm-replay
 echo '::endgroup::'
 
 echo '::group::инфраструктура и сервисы'
