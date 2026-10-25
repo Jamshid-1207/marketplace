@@ -185,7 +185,7 @@ function addComposeServices(tree: Tree, name: string, bare: boolean, port?: numb
       ...(bare
         ? {}
         : { DATABASE_URL: databaseUrl, DB_POOL_MAX: '5', KAFKA_BROKERS: 'kafka:29092' }),
-      OTEL_EXPORTER_OTLP_ENDPOINT: 'http://jaeger:4318',
+      OTEL_EXPORTER_OTLP_ENDPOINT: 'http://otel-collector:4318',
     },
     ...(port === undefined ? {} : { ports: [`${port}:3000`] }),
     healthcheck: {
@@ -203,7 +203,7 @@ function addComposeServices(tree: Tree, name: string, bare: boolean, port?: numb
             'kafka-init': { condition: 'service_completed_successfully' },
             kafka: { condition: 'service_healthy' },
           }),
-      jaeger: { condition: 'service_healthy' },
+      'otel-collector': { condition: 'service_started' },
     },
     deploy: { resources: { limits: { memory: '256m' } } },
   });

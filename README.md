@@ -11,7 +11,7 @@ Pet-проект: multi-vendor B2C маркетплейс на микросер�
 ```bash
 pnpm install
 cp .env.example .env
-pnpm infra:up      # Postgres, Kafka, Kafbat UI :8080, Jaeger :16686, Mailpit :8025
+pnpm infra:up      # Postgres, Kafka, Kafbat UI :8080, Jaeger :16686, Grafana :3005, Prometheus :9090, Mailpit :8025
 pnpm infra:smoke   # проверка инфраструктуры
 
 pnpm nx run-many -t lint typecheck test build   # проверки без Docker

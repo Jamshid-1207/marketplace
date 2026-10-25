@@ -24,9 +24,13 @@
     ]
   },
   "dependencies": {
+    "@opentelemetry/api": "1.10.0",
     "@repo/contracts": "workspace:*",
     "@repo/observability": "workspace:*",
     "pg": "8.23.1",
     "tslib": "^2.8.1"
+  },
+  "devDependencies": {
+    "@opentelemetry/sdk-metrics": "3.0.0"
   }
 }

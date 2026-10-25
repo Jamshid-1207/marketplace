@@ -17,6 +17,7 @@ import {
 import { priceOrder } from '../domain/order';
 import { removePurchased } from './cart.service';
 import { publishCommand, publishOrderEvent } from './publish';
+import { SagaMetrics } from './saga-metrics';
 import {
   IdempotencyKeyReusedError,
   UnavailableSkusError,
@@ -54,6 +55,7 @@ export function requestHash(request: CreateOrderRequest): string {
  */
 export class CheckoutService {
   private readonly now: () => Date;
+  private readonly metrics = new SagaMetrics();
 
   constructor(
     private readonly checkout: CheckoutRepository,
@@ -105,27 +107,26 @@ export class CheckoutService {
       if (!raced) throw new Error('ключ идемпотентности занят, но не найден', { cause: error });
       return raced;
     }
+    this.metrics.record('NEW', started.saga.state);
     this.log.info({ orderId: facts.orderId, total: facts.total }, 'заказ создан');
     return { orderId: facts.orderId, status: started.saga.state };
   }
 
   /** Ответ участника saga (erp, payment): переход ровно один раз на событие. */
   async onSagaEvent(orderId: string, eventId: string, input: SagaInput): Promise<void> {
-    await this.checkout.transaction(async (tx) => {
+    const changed = await this.checkout.transaction(async (tx) => {
       const locked = await tx.lockSaga(orderId);
       if (!locked) {
         this.log.warn({ orderId, eventId, type: input.type }, 'событие для неизвестного заказа');
-        return;
+        return null;
       }
-      await tx.once(CHECKOUT_HANDLER, eventId, () =>
-        this.apply(
-          tx,
-          locked.facts,
-          transition(locked.saga, locked.facts, input, this.deadlines()),
-          input,
-        ),
+      const result = transition(locked.saga, locked.facts, input, this.deadlines());
+      const applied = await tx.once(CHECKOUT_HANDLER, eventId, () =>
+        this.apply(tx, locked.facts, result, input),
       );
+      return applied ? ([locked.saga.state, result.saga.state] as const) : null;
     });
+    if (changed) this.metrics.record(...changed);
   }
 
   /**
@@ -136,25 +137,24 @@ export class CheckoutService {
     const now = this.now();
     let processed = 0;
     for (const due of await this.checkout.dueSagas(now, DUE_BATCH)) {
-      const handled = await runWithContext(
+      const changed = await runWithContext(
         { correlationId: due.correlationId, causationId: null },
         () =>
           runInStoredTrace(due.traceHeaders, 'checkout-deadline', () =>
             this.checkout.transaction(async (tx) => {
               const locked = await tx.lockDueSaga(due.orderId, now);
-              if (!locked) return false; // занята обработчиком события или уже не просрочена
+              if (!locked) return null; // занята обработчиком события или уже не просрочена
               const input: SagaInput = { type: 'deadline' };
-              await this.apply(
-                tx,
-                locked.facts,
-                transition(locked.saga, locked.facts, input, this.deadlines()),
-                input,
-              );
-              return true;
+              const result = transition(locked.saga, locked.facts, input, this.deadlines());
+              await this.apply(tx, locked.facts, result, input);
+              return [locked.saga.state, result.saga.state] as const;
             }),
           ),
       );
-      if (handled) processed++;
+      if (changed) {
+        this.metrics.record(...changed);
+        processed++;
+      }
     }
     return processed;
   }

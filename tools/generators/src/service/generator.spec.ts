@@ -210,13 +210,13 @@ describe('генератор сервиса', () => {
       ]);
     });
 
-    it('в compose — один сервис без миграций, зависит только от Jaeger', async () => {
+    it('в compose — один сервис без миграций, зависит только от OpenTelemetry Collector', async () => {
       await serviceGenerator(tree, { name: 'fake-psp', bare: true, port: 4000 });
       const compose = parse(read(tree, 'compose.yaml'));
       expect(compose.services['fake-psp-migrate']).toBeUndefined();
       expect(compose.services['fake-psp'].ports).toEqual(['4000:3000']);
       expect(compose.services['fake-psp'].depends_on).toEqual({
-        jaeger: { condition: 'service_healthy' },
+        'otel-collector': { condition: 'service_started' },
       });
       expect(compose.services['fake-psp'].environment.DATABASE_URL).toBeUndefined();
     });

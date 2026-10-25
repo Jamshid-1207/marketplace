@@ -11,6 +11,7 @@ import { ANY_HANDLER, describeError, dlqTopic, headersToStrings, toDlqMessage } 
 import { ConsumerStoppingError, isPermanent } from './errors';
 import { readDlqToEnd, type ReprocessResult } from './dlq-reprocess';
 import type { KafkaLogger } from './kafka';
+import { ConsumerMetrics } from './metrics';
 
 export interface MessageMeta {
   topic: string;
@@ -70,6 +71,7 @@ export class ConsumerRunner {
   };
   private consumer?: Consumer;
   private stopping = false;
+  private readonly metrics: ConsumerMetrics;
 
   constructor(options: ConsumerRunnerOptions) {
     this.options = {
@@ -80,6 +82,7 @@ export class ConsumerRunner {
       sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
       ...options,
     };
+    this.metrics = new ConsumerMetrics(this.options.groupId);
   }
 
   get dlqTopic(): string {
@@ -157,7 +160,9 @@ export class ConsumerRunner {
     try {
       decoded = this.options.registry.decode(JSON.parse(message.value?.toString() ?? ''));
     } catch (error) {
+      const started = performance.now();
       await this.toDlq(message, meta, ANY_HANDLER, error, 1);
+      this.metrics.processed(topic, ANY_HANDLER, 'dlq', started);
       return;
     }
 
@@ -193,15 +198,19 @@ export class ConsumerRunner {
     heartbeat: () => Promise<void>,
   ): Promise<void> {
     const delays = this.options.retryDelaysMs;
+    const started = performance.now();
     for (let attempt = 1; ; attempt++) {
       try {
         await registration.handle(envelope, meta);
+        this.metrics.processed(meta.topic, registration.name, 'processed', started);
         return;
       } catch (error) {
         if (isPermanent(error) || attempt > delays.length) {
           await this.toDlq(message, meta, registration.name, error, attempt);
+          this.metrics.processed(meta.topic, registration.name, 'dlq', started);
           return;
         }
+        this.metrics.retried(meta.topic, registration.name);
         this.options.logger.warn(
           { ...meta, handler: registration.name, attempt, err: error },
           'временная ошибка обработчика, повтор',

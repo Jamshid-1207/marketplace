@@ -8,7 +8,8 @@ cd "$(dirname "$0")/.."
 
 compose() { docker compose --profile infra "$@"; }
 
-compose up -d --wait --wait-timeout 300 postgres kafka kafbat-ui jaeger mailpit
+compose up -d --wait --wait-timeout 300 postgres kafka kafbat-ui jaeger mailpit \
+  prometheus grafana otel-collector
 compose up -d db-provision kafka-init
 compose wait db-provision kafka-init >/dev/null
 

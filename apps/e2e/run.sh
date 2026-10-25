@@ -73,10 +73,27 @@ export DEV_USER_PASSWORD="$(sed -n 's/^DEV_USER_PASSWORD=//p' .env)"
 E2E_COMPOSE="$COMPOSE" pnpm exec jest --config apps/e2e/jest.e2e.config.cjs
 
 # витрина и кабинет в браузере (SD-07, решение 11; SD-08, решение 9): тот же стенд, только
-# Chromium. В CI браузер вместе с
-# системными библиотеками ставит шаг workflow; здесь — только браузер, если его ещё нет.
+# Chromium. В CI браузер вместе с системными библиотеками ставит шаг workflow; здесь — только
+# браузер, если его ещё нет.
 # Playwright, в отличие от Jest, берёт @repo/contracts из dist: его собирает таргет e2e (dependsOn)
 echo '::group::браузер Playwright'
 pnpm --filter @repo/e2e exec playwright install chromium
 echo '::endgroup::'
 pnpm --filter @repo/e2e exec playwright test
+
+# метрики сервисов прошли путь сервис → OpenTelemetry Collector → Prometheus (SD-09, п. 4):
+# HTTP, saga оформления, обработка сообщений, outbox и lag групп из Kafka
+echo '::group::метрики в Prometheus'
+has_metric() {
+  curl -fsS -G http://localhost:9090/api/v1/query --data-urlencode "query=$1" | grep -q '"value"'
+}
+for query in \
+  'http_server_request_duration_seconds_count{job="gateway"}' \
+  'checkout_saga_transitions_total' \
+  'messaging_process_duration_seconds_count' \
+  'outbox_publish_delay_seconds_count' \
+  'kafka_consumer_group_lag'; do
+  has_metric "$query" || { echo "нет метрики в Prometheus: $query" >&2; exit 1; }
+  echo "есть: $query"
+done
+echo '::endgroup::'

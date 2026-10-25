@@ -1,0 +1,4 @@
+# Prometheus (SD-09, п. 4): метрики приходят remote write из OpenTelemetry Collector,
+# сам он никого не опрашивает — новых портов у сервисов нет (решение 4).
+global:
+  evaluation_interval: 15s

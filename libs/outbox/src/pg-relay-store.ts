@@ -11,6 +11,7 @@ interface OutboxRow {
   message_key: string;
   payload: unknown;
   headers: Record<string, string>;
+  created_at: Date;
 }
 
 /**
@@ -36,7 +37,7 @@ export class PgRelayStore implements RelayStore {
     const { rows } = await (
       await this.connection()
     ).query<OutboxRow>(
-      `SELECT id, event_id, topic, message_key, payload, headers
+      `SELECT id, event_id, topic, message_key, payload, headers, created_at
        FROM outbox WHERE published_at IS NULL ORDER BY id LIMIT $1`,
       [limit],
     );
@@ -47,6 +48,7 @@ export class PgRelayStore implements RelayStore {
       key: row.message_key,
       payload: row.payload,
       headers: row.headers,
+      createdAt: row.created_at,
     }));
   }
 

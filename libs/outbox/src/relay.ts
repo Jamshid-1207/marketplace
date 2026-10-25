@@ -1,3 +1,5 @@
+import { RelayMetrics } from './metrics';
+
 /** Строка outbox, готовая к отправке. */
 export interface OutboxRecord {
   id: string; // bigserial; строкой, чтобы не терять точность
@@ -6,6 +8,8 @@ export interface OutboxRecord {
   key: string;
   payload: unknown; // конверт
   headers: Record<string, string>;
+  /** Когда запись попала в outbox: задержка отправки в метриках (SD-09, п. 4). */
+  createdAt?: Date;
 }
 
 /**
@@ -83,6 +87,7 @@ export class OutboxRelay {
   private loop?: Promise<void>;
   private wake?: () => void;
   private stopping?: Promise<void>;
+  private readonly metrics = new RelayMetrics();
 
   constructor(
     private readonly store: RelayStore,
@@ -128,16 +133,21 @@ export class OutboxRelay {
     try {
       if (!this.leader) {
         this.leader = await this.store.tryAcquireLeadership();
-        if (!this.leader) return 'not-leader';
+        if (!this.leader) {
+          this.metrics.notLeader();
+          return 'not-leader';
+        }
         this.logger.info({}, 'outbox relay: стал лидером');
       }
 
       const records = await this.store.fetchUnpublished(this.options.batchSize);
+      this.metrics.fetched(records, this.options.now());
       if (records.length > 0) {
         await this.publisher.publish(records).catch((error: unknown) => {
           throw new PublishError(error);
         });
         await this.store.markPublished(records.map((r) => r.id));
+        this.metrics.published(records, this.options.now());
       }
       await this.cleanupIfDue();
 

@@ -16,7 +16,7 @@ fail() {
 ok() { echo "ok: $*"; }
 
 # 1. Долгоживущие контейнеры healthy, одноразовые завершились с кодом 0
-for svc in postgres kafka kafbat-ui jaeger mailpit; do
+for svc in postgres kafka kafbat-ui jaeger mailpit prometheus grafana; do
   health="$(docker inspect -f '{{.State.Health.Status}}' "$(docker compose ps -q "$svc")")"
   [[ "$health" == healthy ]] || fail "$svc: $health"
 done
@@ -62,9 +62,41 @@ done < <(grep -v -e '^[[:space:]]*#' -e '^[[:space:]]*$' infra/kafka/topics.conf
 ok 'топики соответствуют topics.conf'
 
 # 5. UI отвечают с хоста
-for url in http://localhost:8080 http://localhost:16686 http://localhost:8025; do
+for url in http://localhost:8080 http://localhost:16686 http://localhost:8025 http://localhost:3005; do
   curl -fsS -o /dev/null "$url" || fail "$url не отвечает"
 done
-ok 'Kafbat UI, Jaeger, Mailpit отвечают'
+ok 'Kafbat UI, Jaeger, Mailpit, Grafana отвечают'
+
+# 6. Наблюдаемость (SD-09, п. 4): Collector жив, Grafana с источниками и дашбордами,
+# метрики Kafka доходят до Prometheus, тестовый спан через Collector — до Jaeger
+docker compose exec -T prometheus wget -qO- http://otel-collector:13133/ >/dev/null ||
+  fail 'otel-collector не отвечает на health_check'
+datasources="$(curl -fsS http://localhost:3005/api/datasources)"
+[[ "$datasources" == *'"uid":"prometheus"'* && "$datasources" == *'"uid":"jaeger"'* ]] ||
+  fail "Grafana: нет источников Prometheus и Jaeger: $datasources"
+[[ "$(curl -fsS 'http://localhost:3005/api/search?query=')" == *'"folderTitle":"Marketplace"'* ]] ||
+  fail 'Grafana: нет дашбордов в папке Marketplace'
+ok 'Collector отвечает, у Grafana источники и дашборды из репозитория'
+
+until_true() {
+  local what=$1 check=$2
+  for _ in $(seq 1 30); do
+    eval "$check" && return
+    sleep 2
+  done
+  fail "не дождались: $what"
+}
+until_true 'метрика kafka_brokers в Prometheus' \
+  "curl -fsS 'http://localhost:9090/api/v1/query?query=kafka_brokers' | grep -q '\"value\"'"
+ok 'метрики Kafka: Collector → Prometheus'
+
+start="$(date +%s%N)"
+trace_id="$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
+span='{"resourceSpans":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"infra-smoke"}}]},"scopeSpans":[{"spans":[{"traceId":"'"$trace_id"'","spanId":"eee19b7ec3c1b174","name":"smoke","kind":1,"startTimeUnixNano":"'"$start"'","endTimeUnixNano":"'"$((start + 1000000))"'"}]}]}]}'
+curl -fsS -o /dev/null -H 'content-type: application/json' -d "$span" http://localhost:4318/v1/traces ||
+  fail 'Collector не принял спан'
+until_true 'спан infra-smoke в Jaeger' \
+  "curl -fsS http://localhost:16686/api/v3/services | grep -q infra-smoke"
+ok 'трейсы: Collector → Jaeger'
 
 echo 'infra smoke: всё в порядке'

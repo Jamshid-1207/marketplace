@@ -1,0 +1,10 @@
+# Дашборды — из репозитория (SD-09, п. 4): правка в UI не сохраняется, источник правды — JSON.
+apiVersion: 1
+
+providers:
+  - name: marketplace
+    folder: Marketplace
+    type: file
+    allowUiUpdates: false
+    options:
+      path: /var/lib/grafana/dashboards

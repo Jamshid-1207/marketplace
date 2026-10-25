@@ -113,12 +113,71 @@ services:
     image: jaegertracing/jaeger:2.22.0
     command: ['--config', '/etc/jaeger/config.yaml']
     volumes: ['./infra/jaeger/config.yaml:/etc/jaeger/config.yaml:ro']
-    ports: ['16686:16686', '4318:4318']
+    # OTLP принимает внутри сети: трейсы шлёт OpenTelemetry Collector (SD-09, п. 4)
+    ports: ['16686:16686']
     healthcheck:
       test: ['CMD', 'wget', '-qO-', 'http://localhost:13133/status']
       interval: 5s
       timeout: 3s
       retries: 20
+    deploy: { resources: { limits: { memory: 256m } } }
+
+  # OpenTelemetry Collector (SD-09, п. 4): OTLP от сервисов и фронтов; трейсы — в Jaeger,
+  # метрики — в Prometheus, lag групп потребителей — из Kafka. Образ distroless: без shell для
+  # healthcheck, готовность проверяет infra/smoke.sh по порту 13133
+  otel-collector:
+    <<: *infra
+    image: otel/opentelemetry-collector-contrib:0.162.0
+    command: ['--config', '/etc/otelcol/config.yaml']
+    volumes: ['./infra/otel-collector/config.yaml:/etc/otelcol/config.yaml:ro']
+    ports: ['4318:4318']
+    depends_on:
+      jaeger: { condition: service_healthy }
+      prometheus: { condition: service_healthy }
+      kafka: { condition: service_healthy }
+    deploy: { resources: { limits: { memory: 256m } } }
+
+  prometheus:
+    <<: *infra
+    image: prom/prometheus:v3.15.0
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=2d
+      # метрики приходят remote write из Collector, сам Prometheus никого не опрашивает
+      - --web.enable-remote-write-receiver
+    volumes: ['./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro']
+    ports: ['9090:9090']
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://localhost:9090/-/ready']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    deploy: { resources: { limits: { memory: 512m } } }
+
+  # Grafana (SD-09, решение 6): источники и дашборды — из infra/grafana; вход без пароля, только
+  # локальный стенд
+  grafana:
+    <<: *infra
+    image: grafana/grafana:13.2.3
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: 'true'
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: 'true'
+      GF_ANALYTICS_REPORTING_ENABLED: 'false'
+      GF_ANALYTICS_CHECK_FOR_UPDATES: 'false'
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/overview.json
+    volumes:
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports: ['3005:3000']
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://localhost:3000/api/health']
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    depends_on:
+      prometheus: { condition: service_healthy }
+      jaeger: { condition: service_healthy }
     deploy: { resources: { limits: { memory: 256m } } }
 
   mailpit:
@@ -142,7 +201,7 @@ services:
     restart: unless-stopped
     environment:
       PORT: '3000'
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
       # браузер покупателя открывает страницу оплаты напрямую, мимо gateway (SD-02, п. 3)
       PSP_PUBLIC_URL: http://localhost:4000
       PSP_WEBHOOK_URL: http://gateway:3000/webhooks/psp
@@ -161,8 +220,8 @@ services:
       retries: 30
       start_period: 10s
     depends_on:
-      jaeger:
-        condition: service_healthy
+      otel-collector:
+        condition: service_started
     deploy:
       resources:
         limits:
@@ -196,7 +255,7 @@ services:
       DATABASE_URL: postgresql://payment_svc:${PAYMENT_DB_PASSWORD}@postgres:5432/payment_db
       DB_POOL_MAX: '5'
       KAFKA_BROKERS: kafka:29092
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
       # провайдер внутри сети compose; webhook от него идёт через gateway (SD-02, п. 3)
       PSP_API_URL: http://fake-psp:3000
       JWKS_URL: http://auth:3000/.well-known/jwks.json
@@ -222,8 +281,8 @@ services:
         condition: service_completed_successfully
       kafka:
         condition: service_healthy
-      jaeger:
-        condition: service_healthy
+      otel-collector:
+        condition: service_started
     deploy:
       resources:
         limits:
@@ -255,7 +314,7 @@ services:
       DATABASE_URL: postgresql://order_svc:${ORDER_DB_PASSWORD}@postgres:5432/order_db
       DB_POOL_MAX: '5'
       KAFKA_BROKERS: kafka:29092
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
       # ключи JWT до этапа 5 — у gateway (SD-02, п. 3.1)
       JWKS_URL: http://auth:3000/.well-known/jwks.json
       RESERVE_DEADLINE_MS: ${RESERVE_DEADLINE_MS:-30000}
@@ -280,8 +339,8 @@ services:
         condition: service_completed_successfully
       kafka:
         condition: service_healthy
-      jaeger:
-        condition: service_healthy
+      otel-collector:
+        condition: service_started
     deploy:
       resources:
         limits:
@@ -297,7 +356,7 @@ services:
     restart: unless-stopped
     environment:
       PORT: '3000'
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
       ORDER_URL: http://order:3000
       PAYMENT_URL: http://payment:3000
       ERP_URL: http://erp:3000
@@ -321,8 +380,8 @@ services:
       retries: 30
       start_period: 10s
     depends_on:
-      jaeger:
-        condition: service_healthy
+      otel-collector:
+        condition: service_started
     deploy:
       resources:
         limits:
@@ -358,7 +417,7 @@ services:
       DATABASE_URL: postgresql://erp_svc:${ERP_DB_PASSWORD}@postgres:5432/erp_db
       DB_POOL_MAX: '5'
       KAFKA_BROKERS: kafka:29092
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
       JWKS_URL: http://auth:3000/.well-known/jwks.json
       RESERVE_TTL_MS: ${RESERVE_TTL_MS:-1800000}
     healthcheck:
@@ -378,8 +437,8 @@ services:
         condition: service_completed_successfully
       kafka:
         condition: service_healthy
-      jaeger:
-        condition: service_healthy
+      otel-collector:
+        condition: service_started
     deploy:
       resources:
         limits:
@@ -416,7 +475,7 @@ services:
       # первый админ платформы (решение 5 SD-05); пусто — не создаётся
       ADMIN_EMAIL: ${ADMIN_EMAIL:-}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
     healthcheck:
       test:
         - CMD
@@ -434,8 +493,8 @@ services:
         condition: service_completed_successfully
       kafka:
         condition: service_healthy
-      jaeger:
-        condition: service_healthy
+      otel-collector:
+        condition: service_started
     deploy:
       resources:
         limits:
@@ -471,7 +530,7 @@ services:
       DB_POOL_MAX: '5'
       KAFKA_BROKERS: kafka:29092
       JWKS_URL: http://auth:3000/.well-known/jwks.json
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
     healthcheck:
       test:
         - CMD
@@ -489,8 +548,8 @@ services:
         condition: service_completed_successfully
       kafka:
         condition: service_healthy
-      jaeger:
-        condition: service_healthy
+      otel-collector:
+        condition: service_started
     deploy:
       resources:
         limits:
@@ -522,7 +581,7 @@ services:
       DATABASE_URL: postgresql://crm_svc:${CRM_DB_PASSWORD}@postgres:5432/crm_db
       DB_POOL_MAX: '5'
       KAFKA_BROKERS: kafka:29092
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
       JWKS_URL: http://auth:3000/.well-known/jwks.json
     healthcheck:
       test:
@@ -541,8 +600,8 @@ services:
         condition: service_completed_successfully
       kafka:
         condition: service_healthy
-      jaeger:
-        condition: service_healthy
+      otel-collector:
+        condition: service_started
     deploy:
       resources:
         limits:
@@ -574,7 +633,7 @@ services:
       DATABASE_URL: postgresql://notification_svc:${NOTIFICATION_DB_PASSWORD}@postgres:5432/notification_db
       DB_POOL_MAX: '5'
       KAFKA_BROKERS: kafka:29092
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
       # письма — в Mailpit: http://localhost:8025 (ТЗ, 3.7)
       SMTP_URL: smtp://mailpit:1025
     healthcheck:
@@ -594,8 +653,8 @@ services:
         condition: service_completed_successfully
       kafka:
         condition: service_healthy
-      jaeger:
-        condition: service_healthy
+      otel-collector:
+        condition: service_started
     deploy:
       resources:
         limits:
@@ -632,7 +691,7 @@ services:
     environment:
       GATEWAY_URL: http://gateway:3000
       PUBLIC_URL: http://localhost:3001
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
     ports:
       - 3001:3001
     networks:
@@ -669,7 +728,7 @@ services:
     environment:
       GATEWAY_URL: http://gateway:3000
       PUBLIC_URL: http://localhost:3002
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
     ports:
       - 3002:3002
     networks:

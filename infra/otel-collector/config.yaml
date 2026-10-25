@@ -1,0 +1,38 @@
+# OpenTelemetry Collector (SD-09, п. 4): сервисы и фронты шлют OTLP сюда.
+# Трейсы — в Jaeger, метрики — в Prometheus (remote write); lag групп потребителей — из брокера.
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+  # lag групп потребителей и смещения партиций — прямо из Kafka (SD-09, п. 1, сценарий 4)
+  kafka_metrics:
+    brokers: [kafka:29092]
+    scrapers: [brokers, topics, consumers]
+    collection_interval: 10s
+
+processors:
+  batch: {}
+
+exporters:
+  otlp_http/jaeger:
+    endpoint: http://jaeger:4318
+  # service.name ресурса становится меткой job
+  prometheus_remote_write:
+    endpoint: http://prometheus:9090/api/v1/write
+
+service:
+  extensions: [health_check]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp_http/jaeger]
+    metrics:
+      receivers: [otlp, kafka_metrics]
+      processors: [batch]
+      exporters: [prometheus_remote_write]

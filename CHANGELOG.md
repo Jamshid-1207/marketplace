@@ -5,6 +5,13 @@
 
 ## [Unreleased] · Этап 9: Hardening
 ### Added
+- **Шаг 1: метрики, OpenTelemetry Collector, Prometheus, Grafana** (SD-09, п. 4, решения 4 и 6).
+  - compose, профиль `infra`: `otel-collector` (`otel/opentelemetry-collector-contrib:0.162.0`, OTLP на 4318) — трейсы в Jaeger, метрики в Prometheus remote write, lag групп потребителей и смещения партиций — receiver `kafka_metrics` прямо из брокера; `prometheus` (`v3.15.0`, 9090, приём remote write, хранение 2 дня); `grafana` (`13.2.3`, 3005, вход без пароля — только локальный стенд). Сервисы и фронты шлют OTLP в Collector, Jaeger больше не публикует 4318 на хост; шаблон генератора сервисов — так же.
+  - `libs/observability`: метрики OpenTelemetry уходят в Collector раз в 10 с; гистограмму `http.server.request.duration` даёт HTTP-инструментация.
+  - Свои метрики: `messaging.process.duration` и `messaging.process.retries` в `libs/kafka` (по топику, группе, обработчику и исходу — обработано или в DLQ), `outbox.publish.delay` и `outbox.oldest_unpublished.age` в `libs/outbox` (relay читает `created_at`; не-лидер сообщает 0), `checkout.saga.transitions` в order — переходы saga после коммита транзакции. Гистограммы в секундах — со своими границами: у SDK по умолчанию миллисекундные.
+  - Grafana: источники Prometheus и Jaeger и дашборд «Marketplace — обзор» из `infra/grafana` — запросы, 5xx и p95 по сервисам и маршрутам gateway, lag групп, outbox, обработка сообщений, переходы saga.
+  - Проверки: `infra/smoke.sh` — Prometheus и Grafana healthy, Collector отвечает, у Grafana источники и дашборды, метрика Kafka дошла до Prometheus, тестовый спан через Collector — до Jaeger; `apps/e2e/run.sh` после сценариев — метрики HTTP gateway, saga, обработки сообщений, outbox и lag есть в Prometheus. Unit-тест метрик outbox на `MeterProvider` SDK.
+  - SD-00, ревизия 12, и README — порты Grafana, Prometheus и Collector.
 - `docs/system-design/09-hardening.md`: дизайн этапа 9 — целевые показатели нагрузки на CI-раннере (каталог, оформление, кабинет, lag событий), нагрузочные сценарии k6 и отдельный workflow `load`, метрики OpenTelemetry → Collector → Prometheus, Grafana с дашбордами из репозитория, RLS на таблицах продавца в catalog, erp, order, payment и crm с отказом по умолчанию; 8 сценариев готовности.
 
 ### Decided
