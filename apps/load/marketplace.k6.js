@@ -124,6 +124,13 @@ const shipping = {
   address: 'Ташкент, ул. Нагрузочная, 1',
 };
 
+/** UUID v4 для `Idempotency-Key`: order принимает только UUID (ADR-0005, п. 9). */
+const uuid = () =>
+  'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = Math.floor(Math.random() * 16);
+    return (c === 'x' ? r : (r % 4) + 8).toString(16);
+  });
+
 function order(token, orderId) {
   return http.get(`${GATEWAY}/api/orders/${orderId}`, {
     ...params(token),
@@ -138,7 +145,7 @@ export function checkout(ctx) {
     `${GATEWAY}/api/orders`,
     JSON.stringify({ lines: [{ skuId: pick(data.skus).skuId, qty: 1 }], shipping }),
     {
-      ...params(token, { 'idempotency-key': `${__VU}-${__ITER}-${Date.now()}` }),
+      ...params(token, { 'idempotency-key': uuid() }),
       tags: { name: 'order', step: 'order' },
     },
   );
