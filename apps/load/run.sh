@@ -71,9 +71,16 @@ pnpm --filter @repo/load exec node scripts/data.cjs >"$OUT/data.json"
 echo '::endgroup::'
 
 started="$(date +%s)"
+# CPU и память контейнеров во время нагрузки: где узкое место стенда
+(while sleep 20; do
+  echo "--- $(date +%T)"
+  docker stats --no-stream --format '{{.Name}} {{.CPUPerc}} {{.MemUsage}}'
+done) >"$OUT/docker-stats.txt" 2>&1 &
+stats_pid=$!
 k6_status=0
 compose --profile tools run --rm k6 run --summary-export=/out/summary.json marketplace.k6.js ||
   k6_status=$?
+kill "$stats_pid" 2>/dev/null || true
 
 # проверки после нагрузки (SD-09, п. 1, сценарии 4–5)
 failures=0
@@ -85,7 +92,29 @@ prom() {
   curl -fsS -G "$PROMETHEUS/api/v1/query" --data-urlencode "query=$1" |
     jq -r '.data.result[0].value[1] // "0"'
 }
+# все ряды запроса: «метки = значение»
+prom_table() {
+  curl -fsS -G "$PROMETHEUS/api/v1/query" --data-urlencode "query=$1" |
+    jq -r '.data.result[] | "\(.metric | to_entries | map(.value) | join(" ")) = \(.value[1])"' |
+    sort
+}
 window="$(($(date +%s) - started))s"
+
+echo '::group::диагностика нагрузки'
+echo '# средняя загрузка CPU по контейнерам за прогон, %'
+awk '$2 ~ /%$/ { gsub("%", "", $2); sum[$1] += $2; n[$1]++ }
+  END { for (c in sum) printf "%7.1f  %s\n", sum[c] / n[c], c }' "$OUT/docker-stats.txt" | sort -rn
+echo '# p95 ответа по сервисам, с'
+prom_table "histogram_quantile(0.95, sum by (job, le) (rate(http_server_request_duration_seconds_bucket[$window])))"
+echo '# p95 обработки сообщения по обработчикам, с'
+prom_table "histogram_quantile(0.95, sum by (handler, le) (rate(messaging_process_duration_seconds_bucket[$window])))"
+echo '# повторы обработчиков'
+prom_table "sum by (handler) (increase(messaging_process_retries_total[$window])) > 0"
+echo '# максимальный lag по группам'
+prom_table "max by (group) (max_over_time({__name__=~\"kafka_consumer_group_lag(_ratio)?\"}[$window]))"
+echo '# переходы saga за прогон'
+prom_table "sum by (to) (increase(checkout_saga_transitions_total[$window]))"
+echo '::endgroup::'
 
 outbox_max="$(prom "max(max_over_time(outbox_oldest_unpublished_age_seconds[$window]))")"
 echo "outbox: самая старая неотправленная запись под нагрузкой — ${outbox_max} с (цель < 10)"

@@ -1,11 +1,33 @@
 # Настройки стенда для нагрузочного прогона (SD-09, п. 3): поверх compose.yaml.
 #   docker compose -f compose.yaml -f compose.load.yaml --profile full up -d
 # Запуск целиком — apps/load/run.sh.
+x-sampling:
+  &sampling # трейсы — каждый десятый корневой запрос, как на нагруженном стенде; метрики — все
+  OTEL_TRACES_SAMPLER: parentbased_traceidratio
+  OTEL_TRACES_SAMPLER_ARG: '0.1'
+
 services:
   gateway:
     environment:
+      <<: *sampling
       # весь поток идёт от нескольких пользователей и с одного адреса k6
       RATE_LIMIT_PER_MINUTE: '1000000'
+  auth:
+    environment: *sampling
+  catalog:
+    environment: *sampling
+  order:
+    environment: *sampling
+  payment:
+    environment: *sampling
+  erp:
+    environment: *sampling
+  crm:
+    environment: *sampling
+  notification:
+    environment: *sampling
+  fake-psp:
+    environment: *sampling
   # каталог e2e: ожидания run.sh те же, что у e2e (SD-07, решение 12)
   catalog-migrate:
     environment:
