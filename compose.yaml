@@ -165,6 +165,12 @@ services:
       GF_AUTH_DISABLE_LOGIN_FORM: 'true'
       GF_ANALYTICS_REPORTING_ENABLED: 'false'
       GF_ANALYTICS_CHECK_FOR_UPDATES: 'false'
+      # без скачивания и обновления ~15 плагинов с grafana.com при каждом старте: стенду хватает
+      # встроенных Prometheus и Jaeger, а каждый установленный плагин — отдельный процесс, и в
+      # лимите памяти Grafana перебирала страницы с диска, занимая все ядра
+      GF_PLUGINS_PREINSTALL_DISABLED: 'true'
+      # встроенные источники, кроме Prometheus и Jaeger, тоже не запускаются: процесс на каждый
+      GF_PLUGINS_DISABLE_PLUGINS: elasticsearch,grafana-postgresql-datasource,grafana-pyroscope-datasource,influxdb,loki,mssql,mysql,opentsdb,stackdriver,tempo,zipkin
       GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/overview.json
     volumes:
       - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
