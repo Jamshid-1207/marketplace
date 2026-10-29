@@ -70,6 +70,27 @@ chmod 777 "$OUT" # k6 в контейнере — не root: отчёт пише
 pnpm --filter @repo/load exec node scripts/data.cjs >"$OUT/data.json"
 echo '::endgroup::'
 
+# подбор ёмкости (SD-09, ревизия 3): LOAD_SWEEP="1 2 3" — k6 на каждом потоке заказов по 2 минуты
+# при тех же каталоге и кабинете, таблица p95 в мс; пороги и проверки — только в обычном прогоне
+if [[ -n "${LOAD_SWEEP:-}" ]]; then
+  echo '::group::подбор ёмкости'
+  printf 'заказ/с\tкаталог\tкабинет\tзаказ\tCONFIRMED\tзависших\tпропущено\n'
+  for rate in $LOAD_SWEEP; do
+    compose --profile tools run --rm -e CHECKOUT_RATE="$rate" -e RAMP=30s -e HOLD=2m k6 run \
+      --summary-export="/out/sweep-$rate.json" marketplace.k6.js >"$OUT/sweep-$rate.log" 2>&1 || true
+    jq -r --arg rate "$rate" '.metrics as $m | [$rate,
+        ($m["http_req_duration{scenario:catalog}"]["p(95)"] | floor),
+        ($m["http_req_duration{scenario:cabinet}"]["p(95)"] | floor),
+        ($m["http_req_duration{scenario:checkout,step:order}"]["p(95)"] | floor),
+        (($m.checkout_confirm_duration["p(95)"] // 0) | floor),
+        ($m.checkout_unconfirmed.count // 0),
+        ($m.dropped_iterations.count // 0)] | @tsv' "$OUT/sweep-$rate.json"
+    sleep 60 # очередь saga прошлой ступени не должна мешать следующей
+  done
+  echo '::endgroup::'
+  exit 0
+fi
+
 started="$(date +%s)"
 # CPU и память контейнеров во время нагрузки: где узкое место стенда
 (while sleep 20; do

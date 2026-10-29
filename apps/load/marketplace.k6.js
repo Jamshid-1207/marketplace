@@ -10,8 +10,12 @@ const PSP = __ENV.PSP_URL || 'http://fake-psp:3000';
 const PASSWORD = __ENV.DEV_USER_PASSWORD;
 const data = JSON.parse(open('/out/data.json'));
 
-const RAMP = '1m';
-const HOLD = '5m';
+// поток и длительность — целевые SD-09, п. 2; переопределяются для подбора ёмкости (run.sh)
+const RAMP = __ENV.RAMP || '1m';
+const HOLD = __ENV.HOLD || '5m';
+const CATALOG_RPS = Number(__ENV.CATALOG_RPS || 50);
+const CHECKOUT_RATE = Number(__ENV.CHECKOUT_RATE || 5);
+const CABINET_RPS = Number(__ENV.CABINET_RPS || 10);
 const BUYERS = 60;
 /** Опрос статуса заказа — раз в секунду, как у витрины (SD-07, п. 3.3: `OrderLive`). */
 const POLL_S = 1;
@@ -38,9 +42,9 @@ const arrival = (rate, exec, vus) => ({
 export const options = {
   setupTimeout: '3m',
   scenarios: {
-    catalog: arrival(50, 'catalog', 30),
-    checkout: arrival(5, 'checkout', 60),
-    cabinet: arrival(10, 'cabinet', 10),
+    catalog: arrival(CATALOG_RPS, 'catalog', 30),
+    checkout: arrival(CHECKOUT_RATE, 'checkout', Math.max(12, CHECKOUT_RATE * 12)),
+    cabinet: arrival(CABINET_RPS, 'cabinet', 10),
   },
   thresholds: {
     'http_req_duration{scenario:catalog}': ['p(95)<300'],
