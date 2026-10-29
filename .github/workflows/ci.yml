@@ -76,10 +76,14 @@ jobs:
   e2e:
     runs-on: ubuntu-latest
     steps:
-      # пять образов с node_modules не помещаются на диск раннера: убираем ненужные SDK (~25 ГБ)
+      # образы сервисов, фронтов и миграций с node_modules не помещаются на диск раннера:
+      # убираем ненужные SDK и предустановленные образы Docker (~35 ГБ)
       - name: Место на диске
         run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL \
+            /usr/local/share/boost /usr/local/.ghcup /usr/share/swift /usr/local/share/powershell \
+            /usr/local/share/chromium /opt/microsoft /opt/google
+          docker system prune -af >/dev/null
           df -h /
       - uses: actions/checkout@v7
         with:
