@@ -26,24 +26,28 @@ const CONFIRM_WAIT_S = 60;
 const confirmDuration = new Trend('checkout_confirm_duration', true);
 const unconfirmed = new Counter('checkout_unconfirmed');
 
-const arrival = (rate, exec, vus) => ({
-  executor: 'ramping-arrival-rate',
-  exec,
-  startRate: 0,
-  timeUnit: '1s',
-  preAllocatedVUs: vus,
-  maxVUs: vus * 2,
-  stages: [
-    { target: rate, duration: RAMP },
-    { target: rate, duration: HOLD },
-  ],
-});
+/** Поток `rate` итераций в секунду; меньше одной — одна за `1 / rate` секунд. */
+const arrival = (rate, exec, vus) => {
+  const unit = rate >= 1 ? 1 : 1 / rate;
+  return {
+    executor: 'ramping-arrival-rate',
+    exec,
+    startRate: 0,
+    timeUnit: `${unit}s`,
+    preAllocatedVUs: vus,
+    maxVUs: vus * 2,
+    stages: [
+      { target: rate * unit, duration: RAMP },
+      { target: rate * unit, duration: HOLD },
+    ],
+  };
+};
 
 export const options = {
   setupTimeout: '3m',
   scenarios: {
     catalog: arrival(CATALOG_RPS, 'catalog', 30),
-    checkout: arrival(CHECKOUT_RATE, 'checkout', Math.max(12, CHECKOUT_RATE * 12)),
+    checkout: arrival(CHECKOUT_RATE, 'checkout', Math.max(12, Math.ceil(CHECKOUT_RATE * 12))),
     cabinet: arrival(CABINET_RPS, 'cabinet', 10),
   },
   thresholds: {
