@@ -33,6 +33,11 @@ jobs:
             /usr/local/share/chromium /opt/microsoft /opt/google
           docker system prune -af >/dev/null
           df -h /
+      # цифры SD-09 — для раннера 4 vCPU и 16 ГБ: ёмкость — в журнале каждого прогона
+      - name: Ёмкость раннера
+        run: |
+          echo "CPU: $(nproc)"
+          free -h
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7

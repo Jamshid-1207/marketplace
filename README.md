@@ -16,6 +16,7 @@ pnpm infra:smoke   # проверка инфраструктуры
 
 pnpm nx run-many -t lint typecheck test build   # проверки без Docker
 pnpm nx affected -t test-integration            # интеграционные тесты (Testcontainers)
+pnpm nx run @repo/load:load                     # нагрузочный прогон k6 на всём стенде (SD-09), ~15 минут
 
 pnpm nx g @repo/generators:service <name>       # новый сервис по шаблону
 docker compose --profile core up -d --build     # инфраструктура и сервисы
@@ -37,6 +38,7 @@ docker compose --profile full up -d --build     # и фронты: витрин�
 - [System Design 06: CRM и уведомления](docs/system-design/06-crm-and-notifications.md)
 - [System Design 07: витрина](docs/system-design/07-storefront.md)
 - [System Design 08: кабинет продавца и админка](docs/system-design/08-backoffice.md)
+- [System Design 09: hardening — нагрузка, метрики, RLS](docs/system-design/09-hardening.md)
 - [ADR](docs/adr/): архитектурные решения
 - [CHANGELOG](CHANGELOG.md): журнал всех изменений
 
