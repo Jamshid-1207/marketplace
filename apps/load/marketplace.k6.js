@@ -13,8 +13,12 @@ const data = JSON.parse(open('/out/data.json'));
 const RAMP = '1m';
 const HOLD = '5m';
 const BUYERS = 60;
+/** Опрос статуса заказа — раз в секунду, как у витрины (SD-07, п. 3.3: `OrderLive`). */
+const POLL_S = 1;
+/** Сколько ждать `CONFIRMED` после оплаты, прежде чем считать заказ зависшим. */
+const CONFIRM_WAIT_S = 60;
 
-/** От оплаты у провайдера до `CONFIRMED`; зависшие — не подтверждённые за 30 с. */
+/** От оплаты у провайдера до `CONFIRMED`; зависшие — не подтверждённые за `CONFIRM_WAIT_S`. */
 const confirmDuration = new Trend('checkout_confirm_duration', true);
 const unconfirmed = new Counter('checkout_unconfirmed');
 
@@ -153,10 +157,10 @@ export function checkout(ctx) {
   const orderId = created.json('orderId');
 
   let pspId = null;
-  for (let i = 0; i < 60 && !pspId; i++) {
+  for (let i = 0; i < CONFIRM_WAIT_S && !pspId; i++) {
     const url = order(token, orderId).json('paymentUrl');
     if (url) pspId = url.split('/').pop();
-    else sleep(0.25);
+    else sleep(POLL_S);
   }
   if (!pspId) {
     unconfirmed.add(1);
@@ -167,14 +171,14 @@ export function checkout(ctx) {
   });
   if (!check(paid, { 'оплата 200': (r) => r.status === 200 })) return;
   const started = Date.now();
-  for (let i = 0; i < 120; i++) {
+  while (Date.now() - started < CONFIRM_WAIT_S * 1_000) {
     const status = order(token, orderId).json('status');
     if (status === 'CONFIRMED') {
       confirmDuration.add(Date.now() - started);
       return;
     }
     if (status === 'CANCELLED') break;
-    sleep(0.25);
+    sleep(POLL_S);
   }
   unconfirmed.add(1);
 }

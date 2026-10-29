@@ -75,7 +75,9 @@ export class ConsumerRunner {
 
   constructor(options: ConsumerRunnerOptions) {
     this.options = {
-      partitionsConsumedConcurrently: 3,
+      // по числу партиций топика сервиса (infra/kafka/topics.conf): под нагрузкой 3 параллельные
+      // партиции из 12 у order держали saga оформления в очереди (SD-09, п. 3)
+      partitionsConsumedConcurrently: 6,
       retryDelaysMs: DEFAULT_RETRY_DELAYS_MS,
       fromBeginning: false,
       fromBeginningTopics: [],
