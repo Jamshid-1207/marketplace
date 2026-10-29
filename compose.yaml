@@ -312,7 +312,8 @@ services:
     environment:
       PORT: '3000'
       DATABASE_URL: postgresql://order_svc:${ORDER_DB_PASSWORD}@postgres:5432/order_db
-      DB_POOL_MAX: '5'
+      # горячий путь оформления: шесть обработчиков saga и HTTP делят пул (ADR-0004, п. 5; SD-09)
+      DB_POOL_MAX: '10'
       KAFKA_BROKERS: kafka:29092
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
       # ключи JWT до этапа 5 — у gateway (SD-02, п. 3.1)
