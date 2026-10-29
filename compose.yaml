@@ -110,7 +110,9 @@ services:
 
   jaeger:
     <<: *infra
-    image: jaegertracing/jaeger:2.22.0
+    # 2.21 убрал HTTP API v1 (`/api/services`, поиск `/api/traces`), а источник Jaeger в Grafana
+    # 13 работает только через него — до поддержки `/api/v3` в плагине (grafana-jaeger-datasource#87)
+    image: jaegertracing/jaeger:2.20.0
     command: ['--config', '/etc/jaeger/config.yaml']
     volumes: ['./infra/jaeger/config.yaml:/etc/jaeger/config.yaml:ro']
     # OTLP принимает внутри сети: трейсы шлёт OpenTelemetry Collector (SD-09, п. 4)

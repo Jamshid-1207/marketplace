@@ -76,7 +76,10 @@ datasources="$(curl -fsS http://localhost:3005/api/datasources)"
   fail "Grafana: нет источников Prometheus и Jaeger: $datasources"
 [[ "$(curl -fsS 'http://localhost:3005/api/search?query=')" == *'"folderTitle":"Marketplace"'* ]] ||
   fail 'Grafana: нет дашбордов в папке Marketplace'
-ok 'Collector отвечает, у Grafana источники и дашборды из репозитория'
+# источник Jaeger в Grafana ходит в HTTP API v1: его нет в Jaeger 2.21+ (compose.yaml)
+jaeger_health="$(curl -sS http://localhost:3005/api/datasources/uid/jaeger/health)"
+[[ "$jaeger_health" == *'"status":"OK"'* ]] || fail "Grafana: источник Jaeger не работает: $jaeger_health"
+ok 'Collector отвечает, у Grafana источники и дашборды из репозитория, Jaeger отвечает Grafana'
 
 until_true() {
   local what=$1 check=$2
